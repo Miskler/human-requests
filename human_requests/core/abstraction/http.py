@@ -27,13 +27,13 @@ class URL:
 
     full_url: str
     """The full URL."""
-    base_url: str
+    base_url: str = ""
     """The base URL, without query parameters."""
-    path: str
+    path: str = ""
     """The path of the URL."""
-    domain: str
+    domain: str = ""
     """The domain of the URL."""
-    params: dict[str, list[str]]
+    params: dict[str, list[str]] = {}
     """A dictionary of query parameters."""
 
     def __post_init__(self):

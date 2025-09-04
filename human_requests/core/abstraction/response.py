@@ -1,6 +1,8 @@
+from typing import Callable, Optional
 from dataclasses import dataclass
 from .request import Request
 from .cookies import Cookie
+from .response_content import BaseContent
 from .http import URL
 
 
@@ -23,10 +25,17 @@ class Response:
     body: str
     """The body of the response."""
 
-    content: HTMLContent
+    content: BaseContent
+    """Распарсенное содержимое ответа."""
 
     status_code: int
     """The status code of the response."""
 
     duration: float
     """The duration of the request in seconds."""
+
+    _render_callable: Optional[Callable] = None
+
+    def render(self):
+        if self._render_callable:
+            return self._render_callable(self)
