@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>/api/challenge</title></head>
+  <body>
+    <h1>JS Challenge</h1>
+    <p>Setting cookie <code>{COOKIE_CHALLENGE}</code> via JS and reloading…</p>
+    <script>
+      (function () {{
+        var name = "{COOKIE_CHALLENGE}";
+        // произвольное значение, нам важен лишь факт наличия
+        var val = Math.random().toString(36).slice(2);
+        // простая кука на домен/путь
+        document.cookie = name + "=" + val + "; Path=/; SameSite=Lax";
+        // перезагружаем
+        window.location.reload();
+      }})();
+    </script>
+  </body>
+</html>
