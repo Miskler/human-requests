@@ -1,0 +1,100 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel", "rich"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "human-requests"
+dynamic = ["version"]
+description = "A library for comparing JSON schemas and displaying differences"
+authors = [
+    {name = "Miskler", email = "mail@miskler.ru"}
+]
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+]
+keywords = ["json", "schema", "diff", "comparison"]
+dependencies = [
+    "rich",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pytest-xdist",
+    "black",
+    "isort",
+    "mypy",
+    "flake8",
+
+    "sphinx",
+    "sphinx-autoapi",
+    "furo",
+    "docutils",
+    "types-docutils"
+]
+
+[project.urls]
+Homepage = "https://github.com/Miskler/jsonschema-diff"
+Repository = "https://github.com/Miskler/jsonschema-diff"
+Documentation = "https://miskler.github.io/jsonschema-diff/basic/quick_start/index.html"
+Issues = "https://github.com/Miskler/jsonschema-diff/issues"
+
+[project.scripts]
+jsonschema-diff = "jsonschema_diff.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "jsonschema_diff.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["jsonschema_diff*"]
+
+[tool.setuptools.package-data]
+"jsonschema_diff" = ["py.typed"]
+
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 100
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--cov=jsonschema_diff --cov-report=term-missing --cov-report=html"

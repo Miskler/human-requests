@@ -6,11 +6,11 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 import time
 
 # импорт строго по твоей структуре
-from .cookies import Cookie
-from .http import HttpMethod, URL
-from .request import Request
-from .response import Response
-from .response_content import HTMLContent
+from .abstraction.cookies import Cookie
+from .abstraction.http import HttpMethod, URL
+from .abstraction.request import Request
+from .abstraction.response import Response
+from .abstraction.response_content import HTMLContent
 
 from curl_cffi import requests as cffi_requests
 from playwright.sync_api import sync_playwright, Page, BrowserContext

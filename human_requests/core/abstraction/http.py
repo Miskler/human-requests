@@ -1,5 +1,5 @@
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urlparse, parse_qs
 
 
@@ -33,7 +33,7 @@ class URL:
     """The path of the URL."""
     domain: str = ""
     """The domain of the URL."""
-    params: dict[str, list[str]] = {}
+    params: dict[str, list[str]] = field(default_factory=dict)
     """A dictionary of query parameters."""
 
     def __post_init__(self):

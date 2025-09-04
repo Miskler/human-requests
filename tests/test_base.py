@@ -5,8 +5,8 @@ import json
 import os
 import pytest
 
-from session import Session
-from http import HttpMethod
+from human_requests.core.session import Session
+from human_requests.core.abstraction.http import HttpMethod
 
 
 # Базовые адреса берём из ENV, чтобы не хардкодить инфраструктуру
