@@ -4,6 +4,7 @@ from .request import Request
 from .cookies import Cookie
 from .response_content import BaseContent
 from .http import URL
+from playwright.async_api import Page
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,8 @@ class Response:
 
     _render_callable: Optional[Callable] = None
 
-    def render(self):
+    def render(self) -> Page:
         if self._render_callable:
             return self._render_callable(self)
+        else:
+            raise ValueError("Not set render callable for Response")
