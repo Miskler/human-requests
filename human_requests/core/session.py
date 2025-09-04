@@ -235,7 +235,7 @@ class Session:
         if self._curl:
             await self._curl.close(); self._curl = None  # noqa: E702
 
-    async def __aenter__(self) -> "AsyncSession":
+    async def __aenter__(self) -> "Session":
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:  # noqa: ANN001
