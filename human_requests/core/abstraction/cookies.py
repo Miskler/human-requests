@@ -61,3 +61,16 @@ class Cookie:
         This is the same as the `expires` property but as a datetime object.
         """
         return datetime.fromtimestamp(self.expires)
+
+    def to_playwright_like_dict(self) -> dict[str, str | int | bool | None]:
+        """This method returns a dictionary of the cookie in a format that is compatible with Playwright."""
+        return {
+            "name": self.name,
+            "value": self.value,
+            "domain": self.domain or None,
+            "path": self.path or "/",
+            "expires": int(self.expires or 0) or None,
+            "httpOnly": bool(self.http_only or False),
+            "secure": bool(self.secure or False),
+            "sameSite": self.same_site or None,
+        }

@@ -37,18 +37,8 @@ def _guess_encoding(headers: Mapping[str, str]) -> str:
 
 def _cookies_to_pw(cookies: Iterable[Cookie]) -> list[dict]:
     out: list[dict] = []
-    for c in cookies:
-        d = asdict(c)
-        out.append({
-            "name": d.get("name"),
-            "value": d.get("value"),
-            "domain": d.get("domain") or None,
-            "path": d.get("path") or "/",
-            "expires": int(d.get("expires") or 0) or None,
-            "httpOnly": bool(d.get("http_only") or False),
-            "secure": bool(d.get("secure") or False),
-            "sameSite": d.get("same_site") or None,
-        })
+    for cook in cookies:
+        out.append(cook.to_playwright_like_dict())
     return out
 
 
@@ -196,14 +186,14 @@ class Session:
         # модели
         req_model = Request(
             method=method,
-            url=_build_url(url),
+            url=URL(full_url=url),
             headers=dict(req_headers),
             body=None,
             cookies=list(self.cookies),
         )
         resp = Response(
             request=req_model,
-            url=_build_url(r.url),
+            url=URL(full_url=r.url),
             headers=resp_headers,  # type: ignore[arg-type]
             cookies=list(self.cookies),
             body=text,
@@ -241,21 +231,37 @@ class Session:
 
     # --- Внутренний коллбек для Response.render(): создаёт Page без сети --- #
 
-    def _render_response(self, response: Response,
-                         *, wait_until: Literal["load", "domcontentloaded", "networkidle"] = "load") -> ContextManager[Page]:
+    def _render_response(
+        self,
+        response: Response,
+        *,
+        wait_until: Literal["load", "domcontentloaded", "networkidle"] = "domcontentloaded",
+    ):
         """
-        Построить Page, эмулируя сетевой ответ через route.fulfill.
-        Не нужен внешний Интернет: мы сами подставим body/headers/URL из Response.
-        Возврат — контекст-менеджер, который на выходе синхронизирует куки в Session.
+        Построить Page, эмулируя сетевой ответ через page.route(...).fulfill().
+        Возвращает контекст-менеджер, который на выходе синхронизирует куки обратно в Session.
         """
         target_url = response.url.full_url
-        # Возьмём заголовки и тело из Response
         headers = dict(getattr(response, "headers", {}) or {})
-        body_bytes = (getattr(response, "content", None) and getattr(response.content, "raw", None)) or response.body.encode("utf-8")
+        body_bytes = (
+            getattr(response, "content", None)
+            and getattr(response.content, "raw", None)
+        ) or response.body.encode("utf-8")
         status = int(getattr(response, "status_code", 200) or 200)
-        # рендер с куками из самого Response, если есть; иначе — текущие Session
+
+        # куки берём из самого Response; если их нет — используем текущие Session
         render_cookies = list(getattr(response, "cookies", None) or self.cookies)
-        return _FulfilledPageCtx(self, target_url, headers, body_bytes, status, render_cookies, wait_until)
+
+        return _FulfilledPageCtx(
+            session=self,
+            url=target_url,
+            headers=headers,
+            body=body_bytes,
+            status=status,
+            cookies=render_cookies,
+            wait_until=wait_until,
+        )
+
 
     # ------------------------------ ЗАВЕРШЕНИЕ ЖИЗНИ ------------------------------ #
 
@@ -325,11 +331,19 @@ class _PageCtx:
 class _FulfilledPageCtx:
     """
     with session._render_response(resp) as page: ...
-    Создаёт новую Page, перехватывает запрос на resp.url и отдаёт подготовленный ответ.
+    Создаёт новую Page, перехватывает её НАВИГАЦИОННЫЙ запрос и отвечает подготовленным ответом.
     """
 
-    def __init__(self, session: Session, url: str, headers: Mapping[str, str], body: bytes,
-                 status: int, cookies: list[Cookie], wait_until: str) -> None:
+    def __init__(
+        self,
+        session: Session,
+        url: str,
+        headers: Mapping[str, str],
+        body: bytes,
+        status: int,
+        cookies: list[Cookie],
+        wait_until: str,
+    ) -> None:
         self.sess = session
         self.url = url
         self.headers = dict(headers)
@@ -337,38 +351,44 @@ class _FulfilledPageCtx:
         self.status = status
         self.cookies = cookies
         self.wait_until = wait_until
-        self.page: Optional[Page] = None
+        self.page = None
+        self._route_set = False
 
-    def __enter__(self) -> Page:
+    def __enter__(self):
+        # поднять браузер/контекст
         self.sess.init_browser()
         assert self.sess._context is not None
-
-        # применим куки, связанные с этим ответом
-        if self.cookies:
-            self.sess._context.add_cookies(_cookies_to_pw(self.cookies))
-
-        # создаём страницу и перехватываем её навигацию на self.url
         ctx = self.sess._context
+
+        # применим куки для этого рендера
+        if self.cookies:
+            ctx.add_cookies(_cookies_to_pw(self.cookies))
+
+        # создаём страницу и ставим маршрут на неё, а не на context
         page = ctx.new_page()
 
-        def handler(route):
+        def handler(route, request):
             route.fulfill(status=self.status, headers=self.headers, body=self.body)
 
-        ctx.route(self.url, handler)
-        page.goto(self.url, wait_until=self.wait_until)  # type: ignore[arg-type]
-        # после загрузки можно снять роут, чтобы не мешать последующим запросам
-        ctx.unroute(self.url, handler)
+        ctx.route("**/*", handler, times=1)   # перехватим ровно 1-й запрос
+        page = ctx.new_page()
+        page.goto(self.url, wait_until=self.wait_until, timeout=self.sess.timeout * 1000)
+
+        self._route_set = True
+
+        # навигация; ждём только domcontentloaded по умолчанию (для fulfill этого достаточно)
+        page.goto(self.url, wait_until=self.wait_until, timeout=self.sess.timeout * 1000)  # type: ignore[arg-type]
 
         self.page = page
         return page
 
     def __exit__(self, exc_type, exc, tb) -> None:
-        try:
-            if self.sess._context is not None:
-                self.sess.cookies = [_cookie_from_pw(c) for c in self.sess._context.cookies()]
-        finally:
-            if self.page is not None:
-                try:
-                    self.page.close()
-                except Exception:
-                    pass
+        if self.sess._context is not None:
+            # заберём куки из браузера в Session
+            self.sess.cookies = [_cookie_from_pw(c) for c in self.sess._context.cookies()]
+            
+        if self.page is not None:
+            try:
+                self.page.close()
+            except Exception:
+                pass
