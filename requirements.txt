@@ -3,6 +3,7 @@ playwright-stealth
 curl-cffi
 browserforge
 
+selectolax
 pytest
 pytest-cov
 black
