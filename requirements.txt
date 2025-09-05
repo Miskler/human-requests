@@ -5,6 +5,7 @@ browserforge
 
 selectolax
 pytest
+pytest-asyncio
 pytest-cov
 black
 isort

@@ -28,9 +28,8 @@ jobs:
           playwright install --with-deps
 
       - name: Start test server in background
-        run: |
-          cd test_serve
-          make serve-bg
+        run: make serve-bg
+        working-directory: test_server
 
       # (опционально) Подождать, пока сервер откроет порт 8000
       # - name: Wait for server
