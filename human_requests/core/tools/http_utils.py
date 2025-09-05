@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from http.cookies import SimpleCookie
 from typing import Any, Iterable, Mapping, Tuple
-from urllib.parse import urlsplit
 
 from ..abstraction.cookies import Cookie
 

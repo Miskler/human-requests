@@ -26,25 +26,28 @@ from curl_cffi import requests as cffi_requests
 from playwright.async_api import BrowserContext, Page, async_playwright
 
 from .tools.http_utils import (
-    guess_encoding,
-    compose_cookie_header,
-    collect_set_cookie_headers,
-    parse_set_cookie,
-    merge_cookies,
     cookies_to_pw,
     cookie_from_pw,
+    compose_cookie_header,
+    collect_set_cookie_headers,
+    guess_encoding,
+    merge_cookies,
+    parse_set_cookie,
 )
+from .impersonation import ImpersonationConfig, Policy
 from .abstraction.cookies import Cookie
 from .abstraction.http import HttpMethod, URL
 from .abstraction.request import Request
 from .abstraction.response import Response
 from .abstraction.response_content import HTMLContent
 
+from playwright_stealth import Stealth  # лёгкая зависимость (~20 КБ)
+
 __all__ = ["Session"]
 
 
 class Session:
-    """curl_cffi.AsyncSession + Playwright + единый cookie-jar"""
+    """curl_cffi.AsyncSession + Playwright + единый cookie-jar."""
 
     # ────── ctor ──────
     def __init__(
@@ -53,26 +56,44 @@ class Session:
         timeout: float = 30.0,
         headless: bool = True,
         browser: Literal["chromium", "firefox", "webkit"] = "chromium",
+        spoof: ImpersonationConfig | None = None,
+        playwright_stealth: bool = True,
     ) -> None:
         self.timeout = timeout
         self.headless = headless
         self.browser_name = browser
+        self.spoof = spoof or ImpersonationConfig()
+        self.playwright_stealth = playwright_stealth and Stealth is not None
 
         self.cookies: list[Cookie] = []
 
-        self._curl: cffi_requests.AsyncSession = cffi_requests.AsyncSession()
-        self._pw = None
+        self._curl: Optional[cffi_requests.AsyncSession] = None
+        self._pw = None  # Playwright object
+        self._stealth_cm = None  # контекст-менеджер Stealth
         self._browser = None
         self._context: Optional[BrowserContext] = None
 
     # ────── lazy init ──────
+    async def _ensure_curl(self) -> None:
+        if self._curl is None:
+            self._curl = cffi_requests.AsyncSession()
+            # INIT_RANDOM — применяем один раз
+            if self.spoof.policy is Policy.INIT_RANDOM:
+                self.spoof.apply_to_curl(self._curl, self.browser_name)
+
     async def _ensure_browser(self) -> None:
         if self._pw is None:
-            self._pw = await async_playwright().start()
+            if self.playwright_stealth:
+                self._stealth_cm = Stealth().use_async(async_playwright())
+                self._pw = await self._stealth_cm.__aenter__()
+            else:
+                self._pw = await async_playwright().start()
+
         if self._browser is None:
             self._browser = await getattr(self._pw, self.browser_name).launch(
                 headless=self.headless
             )
+
         if self._context is None:
             self._context = await self._browser.new_context()
             if self.cookies:
@@ -98,12 +119,19 @@ class Session:
                 (u.scheme, u.netloc, u.path, f"{u.query}&{merged}" if u.query else merged, u.fragment)
             )
 
-        # enum
         method_enum = (
             method if isinstance(method, HttpMethod) else HttpMethod[str(method).upper()]
         )
 
         req_headers = {k.lower(): v for k, v in (headers or {}).items()}
+
+        # spoof --------------------
+        await self._ensure_curl()
+        profile = self.spoof.apply_to_curl(self._curl, self.browser_name) \
+            if self.spoof.policy is Policy.RANDOM_EACH_REQUEST else self.spoof.choose(self.browser_name)
+        req_headers.update(self.spoof.forge_headers(profile))
+
+        # cookies header
         url_parts = urlsplit(url)
         cookie_header, sent_cookies = compose_cookie_header(
             url_parts, req_headers, self.cookies
@@ -111,6 +139,7 @@ class Session:
         if cookie_header:
             req_headers["cookie"] = cookie_header
 
+        # body encoding
         body_bytes: Optional[bytes] = None
         if json_body is not None:
             import json as _json
@@ -227,15 +256,24 @@ class Session:
     # ────── cleanup ──────
     async def close(self) -> None:
         if self._context:
-            await self._context.close(); self._context = None  # noqa: E702
+            await self._context.close()
+            self._context = None
         if self._browser:
-            await self._browser.close(); self._browser = None  # noqa: E702
+            await self._browser.close()
+            self._browser = None
         if self._pw:
-            await self._pw.stop(); self._pw = None  # noqa: E702
+            if self._stealth_cm:  # использовали playwright-stealth
+                await self._stealth_cm.__aexit__(None, None, None)
+                self._stealth_cm = None
+            else:
+                await self._pw.stop()
+            self._pw = None
         if self._curl:
-            await self._curl.close(); self._curl = None  # noqa: E702
+            await self._curl.close()
+            self._curl = None
 
-    async def __aenter__(self) -> "Session":
+    # поддержка «async with AsyncSession() as s»
+    async def __aenter__(self) -> "AsyncSession":
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:  # noqa: ANN001
