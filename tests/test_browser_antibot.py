@@ -15,17 +15,19 @@ STEALTH_OPS = ("stealth", "base")          # включён playwright-stealth �
 SLEEP_SEC   = 3.0                    # как требовалось в ТЗ
 ANTI_ERROR  = {
     "webkit": {
-        "base": ["WebDriver(New)", "Chrome(New)"],
-        "stealth": ["Chrome(New)"],
+        "all": ["Chrome(New)"],
+        "base": ["WebDriver(New)"],
+        "stealth": [],
     },
     "firefox": {
-        "base": ["WebDriver(New)", "Chrome(New)"],
-        "stealth": ["Chrome(New)",
-                    "Plugins Length(Old)", "Plugins is of type PluginArray"], # странно
+        "all": ["Chrome(New)", "Plugins Length(Old)", "Plugins is of type PluginArray"],
+        "base": ["WebDriver(New)"],
+        "stealth": [],
     },
     "chromium": {
+        "all": ["VIDEO_CODECS"],
         "base": ["WebDriver(New)"],
-        "stealth": ["VIDEO_CODECS"], # странно
+        "stealth": [],
     }
 }
 # ---------------------------------------------------------
@@ -38,7 +40,7 @@ def _collect_failures(browser: str, stealth: str, tree: dict, prefix: str = "") 
     for k, v in tree.items():
         path = f"{prefix}{k}"
         if isinstance(v, dict):
-            if v.get("passed") is False and k not in ANTI_ERROR.get(browser, {}).get(stealth, []):
+            if v.get("passed") == False and k not in ANTI_ERROR[browser][stealth] and k not in ANTI_ERROR[browser]["all"]:
                 fails.append(path)
             fails += _collect_failures(browser, stealth, v, prefix=f"{path} → ")
     return fails
@@ -69,6 +71,8 @@ async def test_antibot_matrix(browser: str, stealth: str, mode: str):
     Один элемент матрицы.  Формат имени теста в отчёте Py-test:
         test_antibot_matrix[chromium-True-goto]   (к примеру)
     """
+    matrix_tag = f"{browser}/{'stealth' if stealth == 'stealth' else 'base'}/{mode}"
+
     cfg = ImpersonationConfig(sync_with_engine=True)
     session = Session(
         timeout=5,

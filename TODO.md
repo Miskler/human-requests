@@ -1,3 +1,2 @@
-1. тесты отпечатков браузеров
-2. тесты заголовков
-3. geoip / proxy / trust env
+1. camoufox
+2. geoip / proxy / trust env
