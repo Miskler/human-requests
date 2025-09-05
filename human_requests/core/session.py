@@ -201,7 +201,7 @@ class Session:
         self,
         url: str,
         *,
-        wait_until: Literal["load", "domcontentloaded", "networkidle"] = "load",
+        wait_until: Literal["load", "domcontentloaded", "networkidle"] = "domcontentloaded",
     ) -> Page:
         await self._ensure_browser()
         ctx = self._context
