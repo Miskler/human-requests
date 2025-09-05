@@ -1,86 +1,81 @@
-# tests/test_browser_matrix.py
 from __future__ import annotations
 
 import asyncio
 import os
 import pytest
-import pytest_asyncio
-
-from tests.sannysoft_parser import parse_sannysoft_bot
+from sannysoft_parser import parse_sannysoft_bot
 
 from human_requests.core.session import Session
 from human_requests.core.impersonation import ImpersonationConfig
 
-SANNY_URL = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")
+# ---------------------------------------------------------  settings
+SANNY_URL   = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")
+BROWSERS    = ("chromium", "firefox", "webkit")
+STEALTH_OPS = (True, False)          # включён playwright-stealth или нет
+SLEEP_SEC   = 1.0                    # как требовалось в ТЗ
+# ---------------------------------------------------------
 
-BROWSERS = ["chromium", "firefox", "webkit"]
-STEALTH_FLAGS = [True, False]
-
-
-def _assert_all_passed(result: dict):
-    """Рекурсивно убеждаемся, что каждое поле содержит passed=True."""
-    def walk(node):
-        if isinstance(node, dict):
-            if "passed" in node:
-                assert node["passed"] is True, node
-            for v in node.values():
-                walk(v)
-    walk(result)
-
-
-# ---------------------------------------------------------------------------
-# Фикстура: создаёт / закрывает AsyncSession для каждого теста
-# ---------------------------------------------------------------------------
-@pytest_asyncio.fixture
-async def session_factory():
-    objs: list[Session] = []
-
-    async def _create(browser: str, stealth: bool) -> Session:
-        sess = Session(
-            browser=browser,
-            playwright_stealth=stealth,
-            spoof=ImpersonationConfig(sync_with_engine=True),
-        )
-        objs.append(sess)
-        return sess
-
-    yield _create
-
-    # teardown
-    for s in objs:
-        await s.close()
+def _collect_failures(tree: dict, prefix: str = "") -> list[str]:
+    """
+    Возвращает список путей внутри JSON, где `"passed": false`.
+    """
+    fails: list[str] = []
+    for k, v in tree.items():
+        path = f"{prefix}{k}"
+        if isinstance(v, dict):
+            if v.get("passed") is False:
+                fails.append(path)
+            fails += _collect_failures(v, prefix=f"{path} → ")
+    return fails
 
 
-# ---------------------------------------------------------------------------
-# 1.   async with session.goto_page(...)
-# ---------------------------------------------------------------------------
-@pytest.mark.parametrize("browser", BROWSERS)
-@pytest.mark.parametrize("stealth", STEALTH_FLAGS)
-@pytest.mark.asyncio
-async def test_matrix_goto(session_factory, browser: str, stealth: bool):
-    session = await session_factory(browser, stealth)
-
-    async with session.goto_page(SANNY_URL) as page:
-        await asyncio.sleep(1)                      # ← пауза
-        html = await page.content()
-
-    result = parse_sannysoft_bot(html)
-    _assert_all_passed(result)
+async def _html_via_goto(session: Session) -> str:
+    async with session.goto_page(SANNY_URL) as p:
+        await asyncio.sleep(SLEEP_SEC)
+        return await p.content()
 
 
-# ---------------------------------------------------------------------------
-# 2.   direct request  →  resp.render()
-# ---------------------------------------------------------------------------
-@pytest.mark.parametrize("browser", BROWSERS)
-@pytest.mark.parametrize("stealth", STEALTH_FLAGS)
-@pytest.mark.asyncio
-async def test_matrix_direct_render(session_factory, browser: str, stealth: bool):
-    session = await session_factory(browser, stealth)
-
+async def _html_via_render(session: Session) -> str:
     resp = await session.request("GET", SANNY_URL)
-    async with resp.render() as page:
-        await asyncio.sleep(1)                      # ← пауза
-        html = await page.content()
+    async with resp.render() as p:
+        await asyncio.sleep(SLEEP_SEC)
+        return await p.content()
 
+
+# ————————————————————————————————————————————————————————————————————————
+#  Parametrизация: browser × stealth × mode
+# ————————————————————————————————————————————————————————————————————————
+@pytest.mark.parametrize("browser",    BROWSERS)
+@pytest.mark.parametrize("stealth",    STEALTH_OPS)
+@pytest.mark.parametrize("mode",       ("goto", "render"))
+@pytest.mark.asyncio
+async def test_antibot_matrix(browser: str, stealth: bool, mode: str):
+    """
+    Один элемент матрицы.  Формат имени теста в отчёте Py-test:
+        test_antibot_matrix[chromium-True-goto]   (к примеру)
+    """
+    cfg = ImpersonationConfig(sync_with_engine=True)
+    session = Session(
+        browser=browser,
+        playwright_stealth=stealth,
+        spoof=cfg,
+    )
+
+    # --- получаем HTML ------------------------------------------------
+    try:
+        html = (
+            await _html_via_goto(session)
+            if mode == "goto" else
+            await _html_via_render(session)
+        )
+    finally:
+        await session.close()
+
+    # --- разбираем ----------------------------------------------------------------
     result = parse_sannysoft_bot(html)
-    _assert_all_passed(result)
+    fails  = _collect_failures(result)
+
+    if fails:        # форматируем красивое сообщение
+        matrix_tag = f"{browser}/{ 'stealth' if stealth else 'plain' }/{mode}"
+        fail_list  = ", ".join(fails)
+        pytest.fail(f"[{matrix_tag}] не прошли проверки: {fail_list}", pytrace=False)

@@ -3,8 +3,6 @@
 """
 
 from selectolax.parser import HTMLParser
-import json
-import requests
 import re
 
 
