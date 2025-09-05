@@ -8,6 +8,7 @@ from typing import Callable, Iterable, Sequence, get_args
 
 from curl_cffi import requests as cffi_requests
 from browserforge.headers import HeaderGenerator
+from browserforge.headers.generator import SUPPORTED_BROWSERS as HD_BROWSERS
 
 # ---------------------------------------------------------------------------
 # Доступные профили curl_cffi (динамически, без хардкода)
@@ -120,13 +121,24 @@ class ImpersonationConfig:
         """
         if not self.rotate_headers:
             return {}
-        real_browser = re.sub(r'[^\w\s]+|[\d]+', r'', profile).strip()
-        hg = HeaderGenerator(
-            browser=[real_browser],
-            http_version=2,
-            locale=[self.geo_country] if self.geo_country else "en-US",
-        )
-        hdrs = hg.generate()
+        
+        real_browser = "unknown"
+        for brow in HD_BROWSERS:
+            if profile.startswith(brow):
+                real_browser = brow
+                break
+        else:
+            raise ValueError(f"Unknown impersonation profile: {profile}")
+        
+        try:
+            hg = HeaderGenerator(
+                browser=[real_browser],
+                locale=[self.geo_country] if self.geo_country else "en-US",
+            )
+            hdrs = hg.generate()
+        except ValueError as e:
+            raise RuntimeError(f"Failed to generate headers for `{profile}` as `{real_browser}`: {e}")
+        
         # HeaderGenerator возвращает UA отдельным полем (не всегда кладёт в dict)
         ua = hdrs.get("user-agent", hdrs.pop("User-Agent", None))
         if ua:
