@@ -11,7 +11,7 @@ from human_requests.core.impersonation import ImpersonationConfig
 # ---------------------------------------------------------  settings
 SANNY_URL   = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")
 BROWSERS    = ("chromium", "firefox", "webkit")
-STEALTH_OPS = (True, False)          # включён playwright-stealth или нет
+STEALTH_OPS = ("stealth", "base")          # включён playwright-stealth или нет
 SLEEP_SEC   = 1.0                    # как требовалось в ТЗ
 # ---------------------------------------------------------
 
@@ -49,7 +49,7 @@ async def _html_via_render(session: Session) -> str:
 @pytest.mark.parametrize("stealth",    STEALTH_OPS)
 @pytest.mark.parametrize("mode",       ("goto", "render"))
 @pytest.mark.asyncio
-async def test_antibot_matrix(browser: str, stealth: bool, mode: str):
+async def test_antibot_matrix(browser: str, stealth: str, mode: str):
     """
     Один элемент матрицы.  Формат имени теста в отчёте Py-test:
         test_antibot_matrix[chromium-True-goto]   (к примеру)
@@ -57,7 +57,7 @@ async def test_antibot_matrix(browser: str, stealth: bool, mode: str):
     cfg = ImpersonationConfig(sync_with_engine=True)
     session = Session(
         browser=browser,
-        playwright_stealth=stealth,
+        playwright_stealth=stealth == "stealth",
         spoof=cfg,
     )
 

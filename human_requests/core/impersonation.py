@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Callable, Iterable, Sequence, get_args
@@ -104,8 +105,7 @@ class ImpersonationConfig:
     # ---------------------------------------------------------------- public
     def choose(self, engine: str) -> str:
         """
-        Возвращает имя impersonation-профиля для текущего запроса **без**
-        вызова `impersonate()`.
+        Возвращает имя impersonation-профиля для текущего запроса
         """
         if self.policy is Policy.RANDOM_EACH_REQUEST:
             return self._pick(engine)
@@ -116,12 +116,13 @@ class ImpersonationConfig:
     def forge_headers(self, profile: str) -> dict[str, str]:
         """
         Генерирует комплект real-browser-headers под *тот же* профиль,
-        используя *HeaderGenerator*.
+        используя *browserforge.HeaderGenerator*.
         """
         if not self.rotate_headers:
             return {}
+        real_browser = re.sub(r'[^\w\s]+|[\d]+', r'', profile).strip()
         hg = HeaderGenerator(
-            browser=[profile],
+            browser=[real_browser],
             http_version=2,
             locale=[self.geo_country] if self.geo_country else "en-US",
         )
