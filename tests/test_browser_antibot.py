@@ -10,7 +10,7 @@ from human_requests.core.impersonation import ImpersonationConfig
 
 # ---------------------------------------------------------  settings
 SANNY_URL   = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")
-BROWSERS    = ("chromium", "firefox", "webkit")
+BROWSERS    = ("chromium", "firefox", "webkit", "camoufox")
 STEALTH_OPS = ("stealth", "base")          # включён playwright-stealth или нет
 SLEEP_SEC   = 3.0                    # как требовалось в ТЗ
 ANTI_ERROR  = {
@@ -28,7 +28,12 @@ ANTI_ERROR  = {
         "all": ["VIDEO_CODECS"],
         "base": ["WebDriver(New)"],
         "stealth": [],
-    }
+    },
+    "camoufox": {
+        "all": ["Chrome(New)"],
+        "base": [],
+        "stealth": [],
+    },
 }
 # ---------------------------------------------------------
 
@@ -71,7 +76,8 @@ async def test_antibot_matrix(browser: str, stealth: str, mode: str):
     Один элемент матрицы.  Формат имени теста в отчёте Py-test:
         test_antibot_matrix[chromium-True-goto]   (к примеру)
     """
-    matrix_tag = f"{browser}/{'stealth' if stealth == 'stealth' else 'base'}/{mode}"
+    if browser == "camoufox" and stealth == "stealth":
+        pytest.skip("playwright_stealth=True is incompatible with browser='camoufox'")
 
     cfg = ImpersonationConfig(sync_with_engine=True)
     session = Session(
@@ -96,6 +102,6 @@ async def test_antibot_matrix(browser: str, stealth: str, mode: str):
     fails  = _collect_failures(browser, stealth, result)
 
     if fails:        # форматируем красивое сообщение
-        matrix_tag = f"{browser}/{ 'stealth' if stealth else 'plain' }/{mode}"
+        matrix_tag = f"{browser}/{stealth}/{mode}"
         fail_list  = ", ".join(fails)
         pytest.fail(f"[{matrix_tag}] не прошли проверки: {fail_list}", pytrace=False)

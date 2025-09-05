@@ -34,7 +34,7 @@ from .tools.http_utils import (
     merge_cookies,
     parse_set_cookie,
 )
-from .impersonation import ImpersonationConfig, Policy
+from .impersonation import ImpersonationConfig
 from .abstraction.cookies import Cookie
 from .abstraction.http import HttpMethod, URL
 from .abstraction.request import Request
@@ -54,8 +54,8 @@ class Session:
         self,
         *,
         timeout: float = 30.0,
-        headless: bool = True,
-        browser: Literal["chromium", "firefox", "webkit"] = "chromium",
+        headless: bool = False,
+        browser: Literal["chromium", "firefox", "webkit", "camoufox"] = "chromium",
         spoof: ImpersonationConfig | None = None,
         playwright_stealth: bool = True,
     ) -> None:
@@ -65,11 +65,15 @@ class Session:
         self.spoof = spoof or ImpersonationConfig()
         self.playwright_stealth = playwright_stealth and Stealth is not None
 
+        if self.browser_name == "camoufox" and self.playwright_stealth:
+            raise RuntimeError("playwright_stealth=True is incompatible with browser='camoufox'")
+
         self.cookies: list[Cookie] = []
 
         self._curl: Optional[cffi_requests.AsyncSession] = None
         self._pw = None  # Playwright object
         self._stealth_cm = None  # контекст-менеджер Stealth
+        self._camoufox_cm = None  # контекст-менеджер Camoufox
         self._browser = None
         self._context: Optional[BrowserContext] = None
 
@@ -83,9 +87,16 @@ class Session:
                 self._pw = await async_playwright().start()
 
         if self._browser is None:
-            self._browser = await getattr(self._pw, self.browser_name).launch(
-                headless=self.headless
-            )
+            if self.browser_name == "camoufox":
+                if self._camoufox_cm is None:
+                    from camoufox.async_api import AsyncCamoufox  # type: ignore
+
+                    self._camoufox_cm = AsyncCamoufox(headless=self.headless)
+                    self._browser = await self._camoufox_cm.__aenter__()
+            else:
+                self._browser = await getattr(self._pw, self.browser_name).launch(
+                    headless=self.headless
+                )
 
         if self._context is None:
             self._context = await self._browser.new_context()
@@ -121,7 +132,7 @@ class Session:
         # spoof --------------------
         if self._curl is None:
             self._curl = cffi_requests.AsyncSession()
-        
+
         imper_profile = self.spoof.choose(self.browser_name)
         req_headers.update(self.spoof.forge_headers(imper_profile))
 
@@ -253,9 +264,16 @@ class Session:
         if self._context:
             await self._context.close()
             self._context = None
-        if self._browser:
+
+        # Handle Camoufox context separately
+        if self.browser_name == "camoufox" and self._camoufox_cm is not None:
+            await self._camoufox_cm.__aexit__(None, None, None)
+            self._camoufox_cm = None
+            self._browser = None
+        elif self._browser:
             await self._browser.close()
             self._browser = None
+
         if self._pw:
             if self._stealth_cm:  # использовали playwright-stealth
                 await self._stealth_cm.__aexit__(None, None, None)
@@ -263,12 +281,13 @@ class Session:
             else:
                 await self._pw.stop()
             self._pw = None
+
         if self._curl:
             await self._curl.close()
             self._curl = None
 
     # поддержка «async with AsyncSession() as s»
-    async def __aenter__(self) -> "AsyncSession":
+    async def __aenter__(self) -> "Session":
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:  # noqa: ANN001
