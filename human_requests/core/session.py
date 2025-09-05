@@ -74,13 +74,6 @@ class Session:
         self._context: Optional[BrowserContext] = None
 
     # ────── lazy init ──────
-    async def _ensure_curl(self) -> None:
-        if self._curl is None:
-            self._curl = cffi_requests.AsyncSession()
-            # INIT_RANDOM — применяем один раз
-            if self.spoof.policy is Policy.INIT_RANDOM:
-                self.spoof.apply_to_curl(self._curl, self.browser_name)
-
     async def _ensure_browser(self) -> None:
         if self._pw is None:
             if self.playwright_stealth:
@@ -126,10 +119,11 @@ class Session:
         req_headers = {k.lower(): v for k, v in (headers or {}).items()}
 
         # spoof --------------------
-        await self._ensure_curl()
-        profile = self.spoof.apply_to_curl(self._curl, self.browser_name) \
-            if self.spoof.policy is Policy.RANDOM_EACH_REQUEST else self.spoof.choose(self.browser_name)
-        req_headers.update(self.spoof.forge_headers(profile))
+        if self._curl is None:
+            self._curl = cffi_requests.AsyncSession()
+        
+        imper_profile = self.spoof.choose(self.browser_name)
+        req_headers.update(self.spoof.forge_headers(imper_profile))
 
         # cookies header
         url_parts = urlsplit(url)
@@ -160,6 +154,7 @@ class Session:
             method_enum.value,
             url,
             headers=req_headers,
+            impersonate=imper_profile,
             data=body_bytes,
             allow_redirects=allow_redirects,
             timeout=self.timeout,

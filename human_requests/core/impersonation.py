@@ -12,6 +12,12 @@ from browserforge.headers import HeaderGenerator
 # Доступные профили curl_cffi (динамически, без хардкода)
 # ---------------------------------------------------------------------------
 _ALL_PROFILES: list[str] = sorted(get_args(cffi_requests.impersonate.BrowserTypeLiteral))
+_ENGINE_FAM = {
+    "chromium": "chrome",
+    "firefox":  "firefox",
+    "webkit":   "safari",
+    "camoufox": "firefox"
+}
 
 
 def _family(profile: str) -> str:  # 'chrome122' -> 'chrome'
@@ -79,16 +85,17 @@ class ImpersonationConfig:
         if fam_set:
             pool = [p for p in pool if _family(p) in fam_set]
         if self.min_version:
-            pool = [
-                p for p in pool
-                if int("".join(filter(str.isdigit, p))) >= self.min_version
-            ]
+            pool = [p for p in pool if int("".join(filter(str.isdigit, p))) >= self.min_version]
+
         if self.sync_with_engine:
-            pool = [p for p in pool if _family(p) == engine]
+            need = _ENGINE_FAM.get(engine, engine)
+            first_pass = [p for p in pool if _family(p) == need]
+            pool = first_pass or list(pool)           # ← fallback если «webkit» не нашёлся
+
         pool = [p for p in pool if self.custom_filter(p)]
         pool = list(pool)
         if not pool:
-            raise RuntimeError("No impersonation profile matches given constraints")
+            raise RuntimeError("No impersonation profile satisfies filters")
         return pool
 
     def _pick(self, engine: str) -> str:
@@ -105,16 +112,6 @@ class ImpersonationConfig:
         if not self._cached:
             self._cached = self._pick(engine)
         return self._cached
-
-    # --------------- apply & headers --------------------------------------
-    def apply_to_curl(self, curl_session, engine: str) -> str:
-        """
-        Выбирает профиль (с учётом политики) **и применяет** его к curl-сессии.
-        Возвращает строку профиля (например ``'chrome123'``).
-        """
-        profile = self.choose(engine)
-        curl_session.impersonate(profile)
-        return profile
 
     def forge_headers(self, profile: str) -> dict[str, str]:
         """
