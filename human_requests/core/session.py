@@ -19,7 +19,7 @@ Cookie-jar (упрощённый RFC 6265): домен, путь, secure-фла�
 
 from contextlib import asynccontextmanager
 from time import perf_counter
-from typing import Any, Iterable, Literal, Mapping, Optional
+from typing import Any, Literal, Mapping, Optional
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from curl_cffi import requests as cffi_requests
@@ -196,7 +196,7 @@ class Session:
         self,
         url: str,
         *,
-        wait_until: Literal["load", "domcontentloaded", "networkidle"] = "domcontentloaded",
+        wait_until: Literal["commit", "load", "domcontentloaded", "networkidle"] = "commit",
     ) -> Page:
         await self._ensure_browser()
         ctx = self._context

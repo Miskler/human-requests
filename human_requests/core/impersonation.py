@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import random
-import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Callable, Iterable, Sequence, get_args

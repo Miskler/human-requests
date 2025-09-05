@@ -1,3 +1,7 @@
+playwright
+playwright-stealth
+curl-cffi
+browserforge
 
 pytest
 pytest-cov

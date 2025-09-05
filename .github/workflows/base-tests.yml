@@ -1,0 +1,40 @@
+name: Base tests
+
+on:
+  push:
+    paths:
+      - '**/*.py'
+      - 'requirements.txt'
+      - '.github/workflows/base-tests.yml'
+  pull_request:
+
+jobs:
+  run-base-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies & Playwright
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          playwright install --with-deps
+
+      - name: Start test server in background
+        run: |
+          cd test_serve
+          make serve-bg
+
+      # (опционально) Подождать, пока сервер откроет порт 8000
+      # - name: Wait for server
+      #   run: timeout 60s bash -c 'until nc -z localhost 8000; do sleep 1; done'
+
+      - name: Run unit tests
+        run: pytest tests/test_base.py

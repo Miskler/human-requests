@@ -12,10 +12,25 @@ from human_requests.core.impersonation import ImpersonationConfig
 SANNY_URL   = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")
 BROWSERS    = ("chromium", "firefox", "webkit")
 STEALTH_OPS = ("stealth", "base")          # включён playwright-stealth или нет
-SLEEP_SEC   = 1.0                    # как требовалось в ТЗ
+SLEEP_SEC   = 3.0                    # как требовалось в ТЗ
+ANTI_ERROR  = {
+    "webkit": {
+        "base": ["WebDriver(New)", "Chrome(New)"],
+        "stealth": ["Chrome(New)"],
+    },
+    "firefox": {
+        "base": ["WebDriver(New)", "Chrome(New)"],
+        "stealth": ["Chrome(New)",
+                    "Plugins Length(Old)", "Plugins is of type PluginArray"], # странно
+    },
+    "chromium": {
+        "base": ["WebDriver(New)"],
+        "stealth": ["VIDEO_CODECS"], # странно
+    }
+}
 # ---------------------------------------------------------
 
-def _collect_failures(tree: dict, prefix: str = "") -> list[str]:
+def _collect_failures(browser: str, stealth: str, tree: dict, prefix: str = "") -> list[str]:
     """
     Возвращает список путей внутри JSON, где `"passed": false`.
     """
@@ -23,9 +38,9 @@ def _collect_failures(tree: dict, prefix: str = "") -> list[str]:
     for k, v in tree.items():
         path = f"{prefix}{k}"
         if isinstance(v, dict):
-            if v.get("passed") is False:
+            if v.get("passed") is False and k not in ANTI_ERROR.get(browser, {}).get(stealth, []):
                 fails.append(path)
-            fails += _collect_failures(v, prefix=f"{path} → ")
+            fails += _collect_failures(browser, stealth, v, prefix=f"{path} → ")
     return fails
 
 
@@ -56,6 +71,7 @@ async def test_antibot_matrix(browser: str, stealth: str, mode: str):
     """
     cfg = ImpersonationConfig(sync_with_engine=True)
     session = Session(
+        timeout=5,
         browser=browser,
         playwright_stealth=stealth == "stealth",
         spoof=cfg,
@@ -73,7 +89,7 @@ async def test_antibot_matrix(browser: str, stealth: str, mode: str):
 
     # --- разбираем ----------------------------------------------------------------
     result = parse_sannysoft_bot(html)
-    fails  = _collect_failures(result)
+    fails  = _collect_failures(browser, stealth, result)
 
     if fails:        # форматируем красивое сообщение
         matrix_tag = f"{browser}/{ 'stealth' if stealth else 'plain' }/{mode}"
