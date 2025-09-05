@@ -2,7 +2,6 @@ from typing import Callable, Optional
 from dataclasses import dataclass
 from .request import Request
 from .cookies import Cookie
-from .response_content import BaseContent
 from .http import URL
 from playwright.async_api import Page
 
@@ -25,9 +24,6 @@ class Response:
 
     body: str
     """The body of the response."""
-
-    content: BaseContent
-    """Распарсенное содержимое ответа."""
 
     status_code: int
     """The status code of the response."""
