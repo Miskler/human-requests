@@ -25,16 +25,21 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Utilities",
 ]
-keywords = ["json", "schema", "diff", "comparison"]
+keywords = []
 dependencies = [
-    "rich",
+    "curl-cffi",
+    "browserforge",
 ]
 
 [project.optional-dependencies]
+playwright         = ["playwright"]
+stealth-playwright = ["playwright,playwright-stealth"] # Тянет playwright зависимостью
+camoufox           = ["camoufox"]
 dev = [
+    "selectolax",
+
     "pytest",
     "pytest-cov",
-    "pytest-xdist",
     "black",
     "isort",
     "mypy",

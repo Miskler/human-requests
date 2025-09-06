@@ -1,2 +1,2 @@
-1. camoufox
-2. geoip / proxy / trust env
+1. оформить документацию
+2. оформить воркфлоу / templates

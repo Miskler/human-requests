@@ -12,9 +12,13 @@ core.session — единая state-ful-сессия для *curl_cffi* и *Play
 * ``Response.render``   — офлайн-рендер заранее полученного Response через
   приватный ``Session._render_response``.
 
-Cookie-jar (упрощённый RFC 6265): домен, путь, secure-флаг.
-Один объект ``Session`` = один набор куков, поэтому под каждый тест создавайте
-свежий экземпляр.
+Опциональные зависимости
+========================
+- playwright-stealth: включается флагом `playwright_stealth=True`.
+  Если пакет не установлен и флаг включён — бросаем RuntimeError с инструкцией по установке.
+- camoufox: выбирается `browser='camoufox'`.
+  Если пакет не установлен — бросаем RuntimeError с инструкцией по установке.
+- Несовместимость: camoufox + playwright_stealth одновременно запрещены (RuntimeError).
 """
 
 from contextlib import asynccontextmanager
@@ -25,7 +29,18 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from curl_cffi import requests as cffi_requests
 from playwright.async_api import BrowserContext, Page, async_playwright
-from camoufox.async_api import AsyncCamoufox
+
+# ── опциональные импорты ──────────────────────────────────────────────────────
+try:
+    from playwright_stealth import Stealth
+except Exception:
+    Stealth = None  # type: ignore[assignment]
+
+try:
+    from camoufox.async_api import AsyncCamoufox
+except Exception:
+    AsyncCamoufox = None  # type: ignore[assignment]
+# ──────────────────────────────────────────────────────────────────────────────
 
 from .tools.http_utils import (
     compose_cookie_header,
@@ -39,15 +54,12 @@ from .abstraction.http import HttpMethod, URL
 from .abstraction.request import Request
 from .abstraction.response import Response
 
-from playwright_stealth import Stealth  # лёгкая зависимость (~20 КБ)
-
 __all__ = ["Session"]
 
 
 class Session:
-    """curl_cffi.AsyncSession + Playwright + CookieManager."""
+    """curl_cffi.AsyncSession + Playwright (+опц. Stealth/Camoufox) + CookieManager."""
 
-    # ────── ctor ──────
     def __init__(
         self,
         *,
@@ -61,31 +73,53 @@ class Session:
         self.headless = headless
         self.browser_name = browser
         self.spoof = spoof or ImpersonationConfig()
-        self.playwright_stealth = playwright_stealth and Stealth is not None
+        self.playwright_stealth = bool(playwright_stealth)
 
+        # camoufox несовместим со stealth (по вашим требованиям)
         if self.browser_name == "camoufox" and self.playwright_stealth:
-            raise RuntimeError("playwright_stealth=True incompatible with browser='camoufox'")
+            raise RuntimeError(
+                "playwright_stealth=True несовместим с browser='camoufox'. "
+                "Выключите stealth или используйте chromium/firefox/webkit."
+            )
 
         self.cookies: CookieManager = CookieManager([])
 
         self._curl: Optional[cffi_requests.AsyncSession] = None
-        self._pw = None
-        self._stealth_cm = None
-        self._camoufox_cm = None
+        self._pw = None  # Playwright instance (или stealth-обёртка)
+        self._stealth_cm = None  # контекстный менеджер stealth, если используется
+        self._camoufox_cm = None  # контекстный менеджер Camoufox, если используется
         self._browser = None
         self._context: Optional[BrowserContext] = None
 
     # ────── lazy browser init ──────
     async def _ensure_browser(self) -> None:
+        # Playwright (с Stealth, если включён)
         if self._pw is None:
             if self.playwright_stealth:
-                self._stealth_cm = Stealth().use_async(async_playwright())
+                # Явно ругаемся, если попросили stealth, а пакета нет
+                if self.playwright_stealth and Stealth is None:
+                    raise RuntimeError(
+                        "Запрошен playwright_stealth=True, но пакет 'playwright-stealth' не установлен.\n"
+                        "Установите дополнительную зависимость, например:\n"
+                        "  pip install 'human-requests[stealth]'\n"
+                        "или напрямую: pip install playwright-stealth"
+                )
+                # тут гарантировано, что Stealth установлен (см. __init__)
+                self._stealth_cm = Stealth().use_async(async_playwright())  # type: ignore[operator]
                 self._pw = await self._stealth_cm.__aenter__()
             else:
                 self._pw = await async_playwright().start()
 
+        # Запуск браузера
         if self._browser is None:
             if self.browser_name == "camoufox":
+                if AsyncCamoufox is None:
+                    raise RuntimeError(
+                        "Браузер 'camoufox' запрошен, но пакет 'camoufox' не установлен.\n"
+                        "Установите дополнительную зависимость, например:\n"
+                        "  pip install 'human-requests[camoufox]'\n"
+                        "или напрямую: pip install camoufox"
+                    )
                 if self._camoufox_cm is None:
                     self._camoufox_cm = AsyncCamoufox(headless=self.headless)
                     self._browser = await self._camoufox_cm.__aenter__()
@@ -94,6 +128,7 @@ class Session:
                     headless=self.headless
                 )
 
+        # Контекст
         if self._context is None:
             self._context = await self._browser.new_context()
             if self.cookies:
@@ -122,10 +157,11 @@ class Session:
         method_enum = method if isinstance(method, HttpMethod) else HttpMethod[str(method).upper()]
         req_headers = {k.lower(): v for k, v in (headers or {}).items()}
 
-        # spoof UA / headers
+        # lazy curl session
         if self._curl is None:
             self._curl = cffi_requests.AsyncSession()
 
+        # spoof UA / headers
         imper_profile = self.spoof.choose(self.browser_name)
         req_headers.update(self.spoof.forge_headers(imper_profile))
 
