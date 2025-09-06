@@ -99,18 +99,18 @@ class ImpersonationConfig:
             raise RuntimeError("No impersonation profile satisfies filters")
         return pool
 
-    def _pick(self, engine: str) -> str:
-        return random.choice(self._filter_pool(engine))
-
     # ---------------------------------------------------------------- public
     def choose(self, engine: str) -> str:
         """
         Возвращает имя impersonation-профиля для текущего запроса
         """
+        def _pick(engine: str) -> str:
+            return random.choice(self._filter_pool(engine))
+
         if self.policy is Policy.RANDOM_EACH_REQUEST:
-            return self._pick(engine)
+            return _pick(engine)
         if not self._cached:
-            self._cached = self._pick(engine)
+            self._cached = _pick(engine)
         return self._cached
 
     def forge_headers(self, profile: str) -> dict[str, str]:

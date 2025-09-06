@@ -20,7 +20,11 @@ ANTI_ERROR  = {
         "stealth": [],
     },
     "firefox": {
-        "all": ["Chrome(New)", "Plugins Length(Old)", "Plugins is of type PluginArray"],
+        "all": ["Chrome(New)",
+                "Plugins Length(Old)",
+                "Plugins is of type PluginArray",
+                "WebGL Vendor",
+                "WebGL Renderer"],
         "base": ["WebDriver(New)"],
         "stealth": [],
     },
@@ -30,7 +34,9 @@ ANTI_ERROR  = {
         "stealth": [],
     },
     "camoufox": {
-        "all": ["Chrome(New)"],
+        "all": ["Chrome(New)",
+                "WebGL Vendor",
+                "WebGL Renderer"],
         "base": [],
         "stealth": [],
     },
@@ -102,6 +108,9 @@ async def test_antibot_matrix(browser: str, stealth: str, mode: str):
     fails  = _collect_failures(browser, stealth, result)
 
     if fails:        # форматируем красивое сообщение
-        matrix_tag = f"{browser}/{stealth}/{mode}"
+        if browser != "camoufox":
+            matrix_tag = f"{browser}/{stealth}/{mode}"
+        else:
+            matrix_tag = f"{browser}/{mode}"
         fail_list  = ", ".join(fails)
         pytest.fail(f"[{matrix_tag}] не прошли проверки: {fail_list}", pytrace=False)
