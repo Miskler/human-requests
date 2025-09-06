@@ -63,8 +63,8 @@ class Session:
     def __init__(
         self,
         *,
-        timeout: float = 30.0,
-        headless: bool = False,
+        timeout: float = 15.0,
+        headless: bool = True,
         browser: Literal["chromium", "firefox", "webkit", "camoufox"] = "chromium",
         spoof: ImpersonationConfig | None = None,
         playwright_stealth: bool = True,
