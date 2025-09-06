@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Optional
 from dataclasses import dataclass, field
 from urllib.parse import urlparse, parse_qs
 
@@ -31,14 +32,26 @@ class URL:
     """The base URL, without query parameters."""
     path: str = ""
     """The path of the URL."""
+    domain_with_port: str = ""
+    """The domain of the URL with port."""
     domain: str = ""
     """The domain of the URL."""
+    port: Optional[int] = None
+    """The port of the URL."""
     params: dict[str, list[str]] = field(default_factory=dict)
     """A dictionary of query parameters."""
 
     def __post_init__(self):
         parsed_url = urlparse(self.full_url)
+        
         object.__setattr__(self, "base_url", parsed_url._replace(query="").geturl())
+        
         object.__setattr__(self, "path", parsed_url.path)
-        object.__setattr__(self, "domain", parsed_url.netloc)
+
+        full_domen = parsed_url.netloc.split(":")
+        object.__setattr__(self, "domain_with_port", parsed_url.netloc)
+        object.__setattr__(self, "domain", full_domen[0])
+        if len(full_domen) > 1:
+            object.__setattr__(self, "port", int(full_domen[1]))
+        
         object.__setattr__(self, "params", parse_qs(parsed_url.query))

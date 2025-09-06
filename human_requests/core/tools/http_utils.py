@@ -14,24 +14,23 @@ from ..abstraction.cookies import Cookie
 # ───────────────────── RFC 6265 helpers ──────────────────────────────
 
 
-def domain_match(host: str, cookie_domain: str | None) -> bool:
-    if not cookie_domain:
-        return True
-    host = host.split(":", 1)[0].lower()
-    cd = cookie_domain.lstrip(".").lower()
-    return host == cd or host.endswith("." + cd)
-
-
-def path_match(req_path: str, cookie_path: str | None) -> bool:
-    if not cookie_path:
-        return True
-    if not req_path.endswith("/"):
-        req_path += "/"
-    cp = cookie_path if cookie_path.endswith("/") else cookie_path + "/"
-    return req_path.startswith(cp)
-
-
 def cookie_matches(url_parts, cookie: Cookie) -> bool:  # noqa: ANN001
+    def domain_match(host: str, cookie_domain: str | None) -> bool:
+        if not cookie_domain:
+            return True
+        host = host.split(":", 1)[0].lower()
+        cd = cookie_domain.lstrip(".").lower()
+        return host == cd or host.endswith("." + cd)
+    
+    def path_match(req_path: str, cookie_path: str | None) -> bool:
+        if not cookie_path:
+            return True
+        if not req_path.endswith("/"):
+            req_path += "/"
+        cp = cookie_path if cookie_path.endswith("/") else cookie_path + "/"
+        return req_path.startswith(cp)
+
+
     return (
         domain_match(url_parts.hostname or "", cookie.domain)
         and path_match(url_parts.path or "/", cookie.path)
@@ -105,40 +104,3 @@ def parse_set_cookie(raw_headers: list[str], default_domain: str) -> list[Cookie
                 )
             )
     return out
-
-
-def merge_cookies(jar: list[Cookie], fresh: Iterable[Cookie]) -> list[Cookie]:
-    """Обновляет *jar* in-place **и** возвращает его же."""
-    fresh = list(fresh)
-    if not fresh:
-        return jar
-    kept = [
-        c
-        for c in jar
-        if not any(
-            c.name == n.name and c.domain == n.domain and c.path == n.path
-            for n in fresh
-        )
-    ]
-    kept.extend(fresh)
-    jar[:] = kept
-    return jar
-
-
-# ───────────────────── Playwright ⇆ Cookie model ─────────────────────
-
-
-def cookies_to_pw(cookies: Iterable[Cookie]) -> list[dict[str, Any]]:
-    return [c.to_playwright_like_dict() for c in cookies]
-
-
-def cookie_from_pw(data: Mapping[str, Any]) -> Cookie:
-    return Cookie(
-        name=data["name"],
-        value=data["value"],
-        domain=data.get("domain") or "",
-        path=data.get("path") or "/",
-        expires=int(data.get("expires") or 0),
-        secure=bool(data.get("secure")),
-        http_only=bool(data.get("httpOnly")),
-    )

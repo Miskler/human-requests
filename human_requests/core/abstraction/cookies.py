@@ -1,6 +1,8 @@
 from datetime import datetime
-from typing import Literal
-from dataclasses import dataclass
+from typing import Literal, Iterable
+from dataclasses import dataclass, field
+from urllib.parse import urlsplit
+
 
 @dataclass
 class Cookie:
@@ -74,3 +76,90 @@ class Cookie:
             "secure": bool(self.secure or False),
             "sameSite": self.same_site or None,
         }
+    
+    @staticmethod
+    def from_playwright_like_dict(dict: dict[str, str | int | bool | None]) -> "Cookie":
+        return Cookie(
+            name=str(dict["name"]),
+            value=str(dict["value"]),
+            domain=str(dict.get("domain") or ""),
+            path=str(dict.get("path") or "/"),
+            expires=int(dict.get("expires") or 0),
+            secure=bool(dict.get("secure")),
+            http_only=bool(dict.get("httpOnly")),
+        )
+
+
+@dataclass
+class CookieManager:
+    """Удобная обёртка-«jar» + Playwright конвертация."""
+
+    storage: list[Cookie] = field(default_factory=list)
+
+    # ────── dunder helpers ──────
+    def __iter__(self):
+        return iter(self.storage)
+
+    def __len__(self):
+        return len(self.storage)
+
+    def __bool__(self):
+        return bool(self.storage)
+
+    # ────── CRUD ──────
+    def get(self, name: str, domain: str | None = None, path: str | None = None) -> Cookie | None:
+        return next(
+            (
+                c
+                for c in self.storage
+                if c.name == name
+                and (domain is None or c.domain == domain)
+                and (path is None or c.path == path)
+            ),
+            None,
+        )
+
+    def get_for_domain(self, url_or_domain: str) -> list[Cookie]:
+        host = urlsplit(url_or_domain).hostname or url_or_domain.split(":")[0]
+        if not host:
+            return []
+
+        def _match(cookie_domain: str, h: str) -> bool:
+            return h == cookie_domain or h.endswith("." + cookie_domain)
+
+        return [c for c in self.storage if _match(c.domain, host)]
+
+    def add(self, cookie: Cookie | Iterable[Cookie]) -> None:
+        def _add_one(c: Cookie) -> None:
+            key = (c.domain, c.path, c.name)
+            for i, old in enumerate(self.storage):
+                if (old.domain, old.path, old.name) == key:
+                    self.storage[i] = c
+                    break
+            else:
+                self.storage.append(c)
+        
+        if isinstance(cookie, Iterable) and not isinstance(cookie, Cookie):
+            for c in cookie:
+                _add_one(c)
+        else:
+            _add_one(cookie)
+
+    def delete(self, name: str, domain: str | None = None, path: str | None = None) -> Cookie | None:
+        for i, c in enumerate(self.storage):
+            if c.name == name and (
+                domain is None or c.domain == domain
+            ) and (
+                path is None or c.path == path
+            ):
+                return self.storage.pop(i)
+        return None
+
+    # ────── Playwright helpers ──────
+    def to_playwright(self) -> list[dict]:
+        """Сериализовать все куки в формат, понятный Playwright."""
+        return [c.to_playwright_like_dict() for c in self.storage]
+
+    def add_from_playwright(self, raw_cookies: list[dict]) -> None:
+        """Обратная операция — добавить список сырых PW-кук в jar."""
+        self.add(Cookie.from_playwright_like_dict(rc) for rc in raw_cookies)

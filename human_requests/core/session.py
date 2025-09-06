@@ -18,24 +18,23 @@ Cookie-jar (упрощённый RFC 6265): домен, путь, secure-фла�
 """
 
 from contextlib import asynccontextmanager
+import json
 from time import perf_counter
 from typing import Any, Literal, Mapping, Optional
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from curl_cffi import requests as cffi_requests
 from playwright.async_api import BrowserContext, Page, async_playwright
+from camoufox.async_api import AsyncCamoufox
 
 from .tools.http_utils import (
-    cookies_to_pw,
-    cookie_from_pw,
     compose_cookie_header,
     collect_set_cookie_headers,
     guess_encoding,
-    merge_cookies,
     parse_set_cookie,
 )
 from .impersonation import ImpersonationConfig
-from .abstraction.cookies import Cookie
+from .abstraction.cookies import CookieManager
 from .abstraction.http import HttpMethod, URL
 from .abstraction.request import Request
 from .abstraction.response import Response
@@ -46,7 +45,7 @@ __all__ = ["Session"]
 
 
 class Session:
-    """curl_cffi.AsyncSession + Playwright + единый cookie-jar."""
+    """curl_cffi.AsyncSession + Playwright + CookieManager."""
 
     # ────── ctor ──────
     def __init__(
@@ -65,18 +64,18 @@ class Session:
         self.playwright_stealth = playwright_stealth and Stealth is not None
 
         if self.browser_name == "camoufox" and self.playwright_stealth:
-            raise RuntimeError("playwright_stealth=True is incompatible with browser='camoufox'")
+            raise RuntimeError("playwright_stealth=True incompatible with browser='camoufox'")
 
-        self.cookies: list[Cookie] = []
+        self.cookies: CookieManager = CookieManager([])
 
         self._curl: Optional[cffi_requests.AsyncSession] = None
-        self._pw = None  # Playwright object
-        self._stealth_cm = None  # контекст-менеджер Stealth
-        self._camoufox_cm = None  # контекст-менеджер Camoufox
+        self._pw = None
+        self._stealth_cm = None
+        self._camoufox_cm = None
         self._browser = None
         self._context: Optional[BrowserContext] = None
 
-    # ────── lazy init ──────
+    # ────── lazy browser init ──────
     async def _ensure_browser(self) -> None:
         if self._pw is None:
             if self.playwright_stealth:
@@ -88,8 +87,6 @@ class Session:
         if self._browser is None:
             if self.browser_name == "camoufox":
                 if self._camoufox_cm is None:
-                    from camoufox.async_api import AsyncCamoufox  # type: ignore
-
                     self._camoufox_cm = AsyncCamoufox(headless=self.headless)
                     self._browser = await self._camoufox_cm.__aenter__()
             else:
@@ -100,7 +97,7 @@ class Session:
         if self._context is None:
             self._context = await self._browser.new_context()
             if self.cookies:
-                await self._context.add_cookies(cookies_to_pw(self.cookies))
+                await self._context.add_cookies(self.cookies.to_playwright())
 
     # ────── public: async HTTP ──────
     async def request(
@@ -122,33 +119,28 @@ class Session:
                 (u.scheme, u.netloc, u.path, f"{u.query}&{merged}" if u.query else merged, u.fragment)
             )
 
-        method_enum = (
-            method if isinstance(method, HttpMethod) else HttpMethod[str(method).upper()]
-        )
-
+        method_enum = method if isinstance(method, HttpMethod) else HttpMethod[str(method).upper()]
         req_headers = {k.lower(): v for k, v in (headers or {}).items()}
 
-        # spoof --------------------
+        # spoof UA / headers
         if self._curl is None:
             self._curl = cffi_requests.AsyncSession()
 
         imper_profile = self.spoof.choose(self.browser_name)
         req_headers.update(self.spoof.forge_headers(imper_profile))
 
-        # cookies header
+        # Cookie header
         url_parts = urlsplit(url)
         cookie_header, sent_cookies = compose_cookie_header(
-            url_parts, req_headers, self.cookies
+            url_parts, req_headers, list(self.cookies)
         )
         if cookie_header:
             req_headers["cookie"] = cookie_header
 
-        # body encoding
+        # encode body
         body_bytes: Optional[bytes] = None
         if json_body is not None:
-            import json as _json
-
-            body_bytes = _json.dumps(json_body).encode()
+            body_bytes = json.dumps(json_body).encode()
             req_headers.setdefault("content-type", "application/json")
         elif isinstance(data, str):
             body_bytes = data.encode()
@@ -175,11 +167,12 @@ class Session:
         resp_headers = {k.lower(): v for k, v in r.headers.items()}
         raw_sc = collect_set_cookie_headers(r.headers)
         resp_cookies = parse_set_cookie(raw_sc, url_parts.hostname or "")
-        merge_cookies(self.cookies, resp_cookies)
+        self.cookies.add(resp_cookies)
 
         charset = guess_encoding(resp_headers)
         body_text = r.content.decode(charset, errors="replace")
 
+        # models
         req_model = Request(
             method=method_enum,
             url=URL(full_url=url),
@@ -212,14 +205,14 @@ class Session:
         assert ctx is not None
 
         if self.cookies:
-            await ctx.add_cookies(cookies_to_pw(self.cookies))
+            await ctx.add_cookies(self.cookies.to_playwright())
 
         page = await ctx.new_page()
         try:
             await page.goto(url, wait_until=wait_until, timeout=self.timeout * 1000)
             yield page
         finally:
-            merge_cookies(self.cookies, (cookie_from_pw(c) for c in await ctx.cookies()))
+            self.cookies.add_from_playwright(await ctx.cookies())
             await page.close()
 
     # ────── offline render ──────
@@ -235,7 +228,7 @@ class Session:
         assert ctx is not None
 
         if response.cookies:
-            await ctx.add_cookies(cookies_to_pw(response.cookies))
+            await ctx.add_cookies([c.to_playwright_like_dict() for c in response.cookies])
 
         async def handler(route, _req):  # noqa: ANN001
             await route.fulfill(
@@ -254,7 +247,7 @@ class Session:
             )
             yield page
         finally:
-            merge_cookies(self.cookies, (cookie_from_pw(c) for c in await ctx.cookies()))
+            self.cookies.add_from_playwright(await ctx.cookies())
             await page.close()
 
     # ────── cleanup ──────
@@ -284,7 +277,7 @@ class Session:
             await self._curl.close()
             self._curl = None
 
-    # поддержка «async with AsyncSession() as s»
+    # поддержка «async with»
     async def __aenter__(self) -> "Session":
         return self
 

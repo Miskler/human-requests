@@ -6,7 +6,7 @@ import pytest
 import pytest_asyncio
 
 from human_requests.core.session import Session
-from human_requests.core.abstraction.http import HttpMethod
+from human_requests.core.abstraction.http import HttpMethod, URL
 
 # ---------------------------------------------------------------------------
 # Базовые адреса берём из ENV, чтобы не хардкодить инфраструктуру
@@ -40,13 +40,6 @@ def _cookie_value(cookies: list, name: str) -> str | None:
     return None
 
 
-# ---------------------------------------------------------------------------
-# Утилита для удаления куки из jar сессии по имени
-# ---------------------------------------------------------------------------
-def _remove_cookie(session: Session, name: str) -> None:
-    session.cookies[:] = [c for c in session.cookies if c.name != name]
-
-
 # ===========================================================================
 # 1. direct → простой JSON эндпоинт (/api/base)
 # ===========================================================================
@@ -78,7 +71,7 @@ async def test_direct_html_base_sets_cookie(session_obj: Session):
     assert _cookie_value(session_obj.cookies, COOKIE_BASE) is not None
 
     # Удаляем куку и убеждаемся, что она не сохраняется в jar
-    _remove_cookie(session_obj, COOKIE_BASE)
+    session_obj.cookies.delete(COOKIE_BASE, domain=URL(HTML_BASE).domain)
     assert _cookie_value(session_obj.cookies, COOKIE_BASE) is None
 
     # Повторный запрос: сервер установит куку заново, но мы проверяем, что ранее удалённая не была отправлена
@@ -105,7 +98,7 @@ async def test_goto_html_base_sets_cookie(session_obj: Session):
     assert _cookie_value(session_obj.cookies, COOKIE_BASE) is not None
 
     # Удаляем куку и убеждаемся, что она не сохраняется в jar
-    _remove_cookie(session_obj, COOKIE_BASE)
+    session_obj.cookies.delete(COOKIE_BASE, domain=URL(HTML_BASE).domain)
     assert _cookie_value(session_obj.cookies, COOKIE_BASE) is None
 
     # Повторный запрос: сервер установит куку заново
@@ -137,7 +130,7 @@ async def test_goto_single_page_challenge(session_obj: Session):
     json.loads(protected_resp.body)  # доступ разрешён
 
     # Удаляем куку и убеждаемся, что она не отправляется в последующих запросах
-    _remove_cookie(session_obj, COOKIE_CHALLENGE)
+    session_obj.cookies.delete(COOKIE_CHALLENGE, domain=URL(HTML_BASE).domain)
     assert _cookie_value(session_obj.cookies, COOKIE_CHALLENGE) is None
 
     challenge_resp_no = await session_obj.request(HttpMethod.GET, f"{API_BASE}/challenge")
@@ -176,7 +169,7 @@ async def test_direct_single_page_challenge_with_render(session_obj: Session):
     json.loads(protected_resp.body)
 
     # Удаляем куку и убеждаемся, что она не отправляется
-    _remove_cookie(session_obj, COOKIE_CHALLENGE)
+    session_obj.cookies.delete(COOKIE_CHALLENGE, domain=URL(HTML_BASE).domain)
     assert _cookie_value(session_obj.cookies, COOKIE_CHALLENGE) is None
 
     challenge_resp_no = await session_obj.request(HttpMethod.GET, f"{API_BASE}/challenge")
@@ -208,7 +201,7 @@ async def test_goto_redirect_challenge_and_protected(session_obj: Session):
     assert data_challenge.get("ok") is True
 
     # Удаляем куку и убеждаемся, что она не отправляется
-    _remove_cookie(session_obj, COOKIE_CHALLENGE)
+    session_obj.cookies.delete(COOKIE_CHALLENGE, domain=URL(HTML_BASE).domain)
     assert _cookie_value(session_obj.cookies, COOKIE_CHALLENGE) is None
 
     challenge_resp_no = await session_obj.request(HttpMethod.GET, f"{API_BASE}/challenge")
@@ -245,7 +238,7 @@ async def test_direct_redirect_challenge_with_render(session_obj: Session):
     json.loads(protected_resp.body)
 
     # Удаляем куку и убеждаемся, что она не отправляется
-    _remove_cookie(session_obj, COOKIE_CHALLENGE)
+    session_obj.cookies.delete(COOKIE_CHALLENGE, domain=URL(HTML_BASE).domain)
     assert _cookie_value(session_obj.cookies, COOKIE_CHALLENGE) is None
 
     challenge_resp_no = await session_obj.request(HttpMethod.GET, f"{API_BASE}/challenge")
