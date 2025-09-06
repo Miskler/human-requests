@@ -39,7 +39,6 @@ from .abstraction.cookies import Cookie
 from .abstraction.http import HttpMethod, URL
 from .abstraction.request import Request
 from .abstraction.response import Response
-from .abstraction.response_content import HTMLContent
 
 from playwright_stealth import Stealth  # лёгкая зависимость (~20 КБ)
 
@@ -194,7 +193,6 @@ class Session:
             headers=resp_headers,  # type: ignore[arg-type]
             cookies=resp_cookies,
             body=body_text,
-            content=HTMLContent(body_text, url),  # type: ignore[arg-type]
             status_code=r.status_code,
             duration=duration,
             _render_callable=self._render_response,
