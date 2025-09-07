@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel", "rich"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "human-requests"
+name = "network-manager"
 dynamic = ["version"]
 description = "A library for comparing JSON schemas and displaying differences"
 authors = [
@@ -58,17 +58,14 @@ Repository = "https://github.com/Miskler/jsonschema-diff"
 Documentation = "https://miskler.github.io/jsonschema-diff/basic/quick_start/index.html"
 Issues = "https://github.com/Miskler/jsonschema-diff/issues"
 
-[project.scripts]
-jsonschema-diff = "jsonschema_diff.cli:main"
-
 [tool.setuptools.dynamic]
-version = {attr = "jsonschema_diff.__version__"}
+version = {attr = "network_manager.__version__"}
 
 [tool.setuptools.packages.find]
-include = ["jsonschema_diff*"]
+include = ["network_manager*"]
 
 [tool.setuptools.package-data]
-"jsonschema_diff" = ["py.typed"]
+"network_manager" = ["py.typed"]
 
 
 [tool.black]

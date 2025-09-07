@@ -94,7 +94,7 @@ class Cookie:
                 return True
         return False
     
-    def for_url_match(self, url: "URL") -> bool:
+    def for_url_match(self, url: URL) -> bool:
         """
         Вернёт True, если кука должна быть отправлена браузером для данного URL.
         Учитывает: истечение срока, флаг Secure, domain-match и path-match.
@@ -109,8 +109,7 @@ class Cookie:
             return False
 
         # 3) домен
-        host = url.domain or (url.domain_with_port.split(":")[0] if url.domain_with_port else "")
-        if not host or not self._for_domain_match(host):
+        if not self._for_domain_match(url.domain):
             return False
 
         # 4) путь
@@ -151,7 +150,7 @@ class CookieManager:
             None,
         )
 
-    def for_url(self, url: "URL") -> list[Cookie]:
+    def for_url(self, url: URL) -> list[Cookie]:
         """
         Вернуть список кук, которые браузер бы отправил для данного URL.
         Отбор делегирован на Cookie.for_url_match(); сортировка как в RFC 6265:
@@ -160,6 +159,12 @@ class CookieManager:
         selected = [c for c in self.storage if c.for_url_match(url)]
         selected.sort(key=lambda c: (-len(c.path or "/"), c.name))
         return selected
+    
+    @staticmethod
+    def to_cookie_header(cookies: list[Cookie]) -> dict[Literal["Cookie"], str]:
+        """Сериализовать все в один заголовок."""
+        return {"Cookie": "; ".join(f"{c.name}={c.value}" for c in cookies)}
+
 
     def add(self, cookie: Cookie | Iterable[Cookie]) -> None:
         """Добавить куку/куки."""

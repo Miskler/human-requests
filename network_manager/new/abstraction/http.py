@@ -24,7 +24,7 @@ class HttpMethod(Enum):
 
 @dataclass(frozen=True)
 class URL:
-    """A dataclass containing the parsed URL components."""
+    """A dataclass containing the parsed URL(full_url='http://example.com') components."""
 
     full_url: str
     """The full URL."""
