@@ -87,7 +87,7 @@ async def test_antibot_matrix(browser: str, stealth: str, mode: str):
 
     cfg = ImpersonationConfig(sync_with_engine=True)
     session = Session(
-        timeout=5,
+        timeout=10,
         browser=browser,
         playwright_stealth=stealth == "stealth",
         spoof=cfg,

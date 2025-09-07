@@ -64,6 +64,12 @@ class Cookie:
         """
         return datetime.fromtimestamp(self.expires)
 
+    def max_age_as_datetime(self) -> datetime:
+        """
+        This is the same as the `max_age` property but as a datetime object.
+        """
+        return datetime.fromtimestamp(self.max_age)
+
     def to_playwright_like_dict(self) -> dict[str, str | int | bool | None]:
         """This method returns a dictionary of the cookie in a format that is compatible with Playwright."""
         return {
@@ -108,6 +114,7 @@ class CookieManager:
 
     # ────── CRUD ──────
     def get(self, name: str, domain: str | None = None, path: str | None = None) -> Cookie | None:
+        """Получить куку по имени, домену и пути."""
         return next(
             (
                 c
@@ -120,6 +127,7 @@ class CookieManager:
         )
 
     def get_for_domain(self, url_or_domain: str) -> list[Cookie]:
+        """Получить все куки доступные для домена/урла"""
         host = urlsplit(url_or_domain).hostname or url_or_domain.split(":")[0]
         if not host:
             return []
@@ -130,6 +138,7 @@ class CookieManager:
         return [c for c in self.storage if _match(c.domain, host)]
 
     def add(self, cookie: Cookie | Iterable[Cookie]) -> None:
+        """Добавить куку/куки."""
         def _add_one(c: Cookie) -> None:
             key = (c.domain, c.path, c.name)
             for i, old in enumerate(self.storage):
@@ -146,6 +155,7 @@ class CookieManager:
             _add_one(cookie)
 
     def delete(self, name: str, domain: str | None = None, path: str | None = None) -> Cookie | None:
+        """Удалить куку по имени, домену и пути."""
         for i, c in enumerate(self.storage):
             if c.name == name and (
                 domain is None or c.domain == domain

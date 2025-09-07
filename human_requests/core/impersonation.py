@@ -15,14 +15,18 @@ from browserforge.headers.generator import SUPPORTED_BROWSERS as HD_BROWSERS
 _ALL_PROFILES: list[str] = sorted(get_args(cffi_requests.impersonate.BrowserTypeLiteral))
 _ENGINE_FAM = {
     "chromium": "chrome",
+    "edge":     "chrome",
+    "opera":    "chrome",
+    "yandex":   "chrome",
     "firefox":  "firefox",
     "webkit":   "safari",
     "camoufox": "firefox"
 }
+_SPOOF_ENGINES_FAM = ["chrome", "firefox", "safari", "edge", "opera"]
 
 
 def _family(profile: str) -> str:  # 'chrome122' -> 'chrome'
-    for fam in ("chrome", "firefox", "safari", "edge", "opera"):
+    for fam in _SPOOF_ENGINES_FAM:
         if profile.startswith(fam):
             return fam
     return "other"
@@ -32,15 +36,21 @@ def _family(profile: str) -> str:  # 'chrome122' -> 'chrome'
 # Политика выбора профиля для impersonate()
 # ---------------------------------------------------------------------------
 class Policy(Enum):
+    """Политика момента выбора профиля для ImpersonationConfig"""
+
     INIT_RANDOM = auto()          # профиль выбирается при создании сессии
+    """Профиль выбирается при создании сессии, а затем не меняется"""
     RANDOM_EACH_REQUEST = auto()  # новый профиль перед каждым запросом
+    """Профиль выбирается при каждом запросе"""
 
 
 # ---------------------------------------------------------------------------
 # Dataclass-конфиг
 # ---------------------------------------------------------------------------
 def _always(_: str) -> bool:
+    """Стандартный ImpersonationConfig.custom_filter фильтр"""
     return True
+
 
 
 @dataclass(slots=True)
@@ -61,22 +71,29 @@ class ImpersonationConfig:
 
     # --- главная политика --------------------------------------------------
     policy: Policy = Policy.INIT_RANDOM
+    """Политика момента выбора профиля"""
 
     # --- фильтры выбора профиля -------------------------------------------
     browser_family: str | Sequence[str] | None = None   # 'chrome' или ['chrome','edge']
+    """Семейство браузеров (chrome, edge, opera, firefox, safari)"""
     min_version: int | None = None                      # >=
+    """Минимальная версия браузера"""
     custom_filter: Callable[[str], bool] = _always
 
     # --- дополнительные параметры -----------------------------------------
-    geo_country: str | None = None      # ISO-2 code (DE, RU…)
+    geo_country: str = "en-US"      # ISO-2 code (DE, RU…)
     sync_with_engine: bool = True       # ограничивать семейством движка Playwright
+    """Ограничивать семейством текущим движком Playwright (chromium, firefox, webkit) или camoufox=firefox"""
     rotate_headers: bool = True         # использовать HeaderGenerator
+    """Генерировать ли браузеро-подобные заголовки (user-agent, accept-language, etc.)"""
 
     # --- внутреннее --------------------------------------------------------
     _cached: str = field(default="", init=False, repr=False)
 
     # ------------------------------------------------------------------ utils
     def _filter_pool(self, engine: str) -> list[str]:
+        """Фильтрует по playwright движку доступную имперсонацию"""
+
         fam_set: set[str] = (
             {self.browser_family} if isinstance(self.browser_family, str)
             else set(self.browser_family or [])

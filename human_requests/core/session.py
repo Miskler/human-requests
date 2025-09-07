@@ -140,19 +140,16 @@ class Session:
         method: HttpMethod | str,
         url: str,
         *,
-        params: Optional[Mapping[str, Any]] = None,
         headers: Optional[Mapping[str, str]] = None,
-        data: Any = None,
-        json_body: Any = None,
-        allow_redirects: bool = True,
+        **kwargs,
     ) -> Response:
-        # query-string merge
-        if params:
-            u = urlsplit(url)
-            merged = urlencode(params, doseq=True)
-            url = urlunsplit(
-                (u.scheme, u.netloc, u.path, f"{u.query}&{merged}" if u.query else merged, u.fragment)
-            )
+        """
+        Обычный быстрый запрос через curl_cffi. Обязательно нужно передать HttpMethod или его строковое представление а так же url.
+
+        Опционально можно передать дополнительные заголовки.
+
+        Через **kwargs можно передать дополнительные параметры curl_cffi.AsyncSession.request (см. их документацию для подробностей).
+        """
 
         method_enum = method if isinstance(method, HttpMethod) else HttpMethod[str(method).upper()]
         req_headers = {k.lower(): v for k, v in (headers or {}).items()}
@@ -173,19 +170,6 @@ class Session:
         if cookie_header:
             req_headers["cookie"] = cookie_header
 
-        # encode body
-        body_bytes: Optional[bytes] = None
-        if json_body is not None:
-            body_bytes = json.dumps(json_body).encode()
-            req_headers.setdefault("content-type", "application/json")
-        elif isinstance(data, str):
-            body_bytes = data.encode()
-        elif isinstance(data, bytes):
-            body_bytes = data
-        elif isinstance(data, Mapping):
-            body_bytes = urlencode(data, doseq=True).encode()
-            req_headers.setdefault("content-type", "application/x-www-form-urlencoded")
-
         # perform
         t0 = perf_counter()
         r = await self._curl.request(
@@ -193,9 +177,8 @@ class Session:
             url,
             headers=req_headers,
             impersonate=imper_profile,
-            data=body_bytes,
-            allow_redirects=allow_redirects,
             timeout=self.timeout,
+            **kwargs,
         )
         duration = perf_counter() - t0
 
@@ -208,12 +191,16 @@ class Session:
         charset = guess_encoding(resp_headers)
         body_text = r.content.decode(charset, errors="replace")
 
+        data = kwargs.get("data")
+        json_body = kwargs.get("json")
+        files = kwargs.get("files")
+
         # models
         req_model = Request(
             method=method_enum,
             url=URL(full_url=url),
             headers=dict(req_headers),
-            body=data if data is not None else json_body,
+            body=data or json_body or files or None,
             cookies=sent_cookies,
         )
         resp_model = Response(
@@ -236,6 +223,8 @@ class Session:
         *,
         wait_until: Literal["commit", "load", "domcontentloaded", "networkidle"] = "commit",
     ) -> Page:
+        """Открытие страницы в браузере. Возвращается Playwright Page."""
+
         await self._ensure_browser()
         ctx = self._context
         assert ctx is not None

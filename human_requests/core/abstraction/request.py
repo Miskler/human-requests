@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Optional
 from .http import HttpMethod, URL
 from .cookies import Cookie
 

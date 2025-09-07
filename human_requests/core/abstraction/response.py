@@ -34,6 +34,11 @@ class Response:
     _render_callable: Optional[Callable] = None
 
     def render(self) -> Page:
+        """Renders the response content in the current browser.
+        It will look like we requested it through the browser from the beginning.
+        
+        Recommended to use in cases when the server returns a JS challenge instead of a response."""
+
         if self._render_callable:
             return self._render_callable(self)
         else:
