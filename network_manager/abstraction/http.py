@@ -30,6 +30,10 @@ class URL:
     """The full URL."""
     base_url: str = ""
     """The base URL, without query parameters."""
+    secure: bool = False
+    """Whether the URL is secure (https/wss)."""
+    protocol: str = ""
+    """The protocol of the URL."""
     path: str = ""
     """The path of the URL."""
     domain_with_port: str = ""
@@ -45,6 +49,8 @@ class URL:
         parsed_url = urlparse(self.full_url)
         
         object.__setattr__(self, "base_url", parsed_url._replace(query="").geturl())
+        object.__setattr__(self, "secure", parsed_url.scheme in ["https", "wss"])
+        object.__setattr__(self, "protocol", parsed_url.scheme)
         
         object.__setattr__(self, "path", parsed_url.path)
 

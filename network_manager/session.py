@@ -22,10 +22,9 @@ core.session — единая state-ful-сессия для *curl_cffi* и *Play
 """
 
 from contextlib import asynccontextmanager
-import json
 from time import perf_counter
-from typing import Any, Literal, Mapping, Optional
-from urllib.parse import urlencode, urlsplit, urlunsplit
+from typing import Literal, Mapping, Optional
+from urllib.parse import urlsplit
 
 from curl_cffi import requests as cffi_requests
 from playwright.async_api import BrowserContext, Page, async_playwright
@@ -69,11 +68,11 @@ class Session:
         spoof: ImpersonationConfig | None = None,
         playwright_stealth: bool = True,
     ) -> None:
-        self.timeout = timeout
-        self.headless = headless
-        self.browser_name = browser
-        self.spoof = spoof or ImpersonationConfig()
-        self.playwright_stealth = bool(playwright_stealth)
+        self.timeout: float = timeout
+        self.headless: bool = headless
+        self.browser_name: Literal["chromium", "firefox", "webkit", "camoufox"] = browser
+        self.spoof: ImpersonationConfig = spoof or ImpersonationConfig()
+        self.playwright_stealth: bool = bool(playwright_stealth)
 
         # camoufox несовместим со stealth (по вашим требованиям)
         if self.browser_name == "camoufox" and self.playwright_stealth:

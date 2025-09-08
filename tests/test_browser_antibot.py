@@ -5,8 +5,7 @@ import os
 import pytest
 from sannysoft_parser import parse_sannysoft_bot
 
-from human_requests.core.session import Session
-from human_requests.core.impersonation import ImpersonationConfig
+from network_manager import Session, ImpersonationConfig
 
 # ---------------------------------------------------------  settings
 SANNY_URL   = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")

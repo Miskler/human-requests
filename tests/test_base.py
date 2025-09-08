@@ -5,8 +5,7 @@ import os
 import pytest
 import pytest_asyncio
 
-from human_requests.core.session import Session
-from human_requests.core.abstraction.http import HttpMethod, URL
+from network_manager import Session, HttpMethod, URL
 
 # ---------------------------------------------------------------------------
 # Базовые адреса берём из ENV, чтобы не хардкодить инфраструктуру

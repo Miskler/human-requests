@@ -1,0 +1,5 @@
+sphinx
+sphinx-autoapi
+furo
+docutils
+types-docutils

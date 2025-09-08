@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "network-manager"
 dynamic = ["version"]
-description = "A library for comparing JSON schemas and displaying differences"
+description = "Своя замена hrequests"
 authors = [
     {name = "Miskler", email = "mail@miskler.ru"}
 ]
@@ -53,10 +53,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Miskler/jsonschema-diff"
-Repository = "https://github.com/Miskler/jsonschema-diff"
-Documentation = "https://miskler.github.io/jsonschema-diff/basic/quick_start/index.html"
-Issues = "https://github.com/Miskler/jsonschema-diff/issues"
+Homepage = "https://github.com/Miskler/network_manager"
+Repository = "https://github.com/Miskler/network_manager"
+Documentation = "https://miskler.github.io/network_manager/basic/quick_start/index.html"
+Issues = "https://github.com/Miskler/network_manager/issues"
 
 [tool.setuptools.dynamic]
 version = {attr = "network_manager.__version__"}
@@ -99,4 +99,4 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "--cov=human_requests --cov-report=term-missing --cov-report=html"
+addopts = "--cov=network_manager --cov-report=term-missing --cov-report=html"
