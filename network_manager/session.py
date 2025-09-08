@@ -21,7 +21,7 @@ core.session — единая state-ful-сессия для *curl_cffi* и *Play
 
 from contextlib import asynccontextmanager
 from time import perf_counter
-from typing import AsyncGenerator, Literal, Mapping, Optional
+from typing import AsyncGenerator, Awaitable, Callable, Literal, Mapping, Optional
 from urllib.parse import urlsplit
 
 from curl_cffi import requests as cffi_requests
@@ -200,6 +200,38 @@ class Session:
             # add_from_playwright принимает список cookie-словари в формате PW
             self.cookies.add_from_playwright(cookies_list)
 
+    # ────── общий хендлер ретраев навигации ──────
+    async def _handle_nav_with_retries(
+        self,
+        page: Page,
+        *,
+        target_url: str,
+        wait_until: Literal["commit", "load", "domcontentloaded", "networkidle"],
+        timeout_ms: int,
+        attempts: int,
+        on_retry: Optional[Callable[[], Awaitable[None]]] = None
+    ) -> None:
+        """
+        Единый хендлер навигации с мягкими повторами для goto/render.
+        Ловит ТОЛЬКО PlaywrightTimeoutError. На повторах вызывает on_retry()
+        (если задан), затем делает reload либо goto в зависимости от состояния страницы.
+        """
+        try:
+            await page.goto(target_url, wait_until=wait_until, timeout=timeout_ms)
+        except PlaywrightTimeoutError as last_err:
+            while attempts > 0:
+                attempts -= 1
+                if on_retry is not None:
+                    await on_retry()
+                try:
+                    await page.reload(wait_until=wait_until, timeout=timeout_ms)
+                    last_err = None  # type: ignore[assignment]
+                    break
+                except PlaywrightTimeoutError as e:
+                    last_err = e
+            if last_err is not None:
+                raise last_err
+
     # ────── public: async HTTP ──────
     async def request(
         self,
@@ -327,33 +359,15 @@ class Session:
         timeout_ms = int(self.timeout * 1000)
         attempts_left = self.page_retry if retry is None else int(retry)
 
-        # первая попытка
         try:
-            await page.goto(url, wait_until=wait_until, timeout=timeout_ms)
-        except PlaywrightTimeoutError as last_err:
-            # мягкие повторы
-            while attempts_left > 0:
-                attempts_left -= 1
-                try:
-                    # если уже частично перешли — reload; иначе повторный goto
-                    if page.url and page.url != "about:blank":
-                        await page.reload(wait_until=wait_until, timeout=timeout_ms)
-                    else:
-                        await page.goto(url, wait_until=wait_until, timeout=timeout_ms)
-                    last_err = None  # type: ignore[assignment]
-                    break
-                except PlaywrightTimeoutError as e:
-                    last_err = e
-            if last_err is not None:
-                # синхронизируем состояние ПЕРЕД пробросом (то, что успели получить)
-                try:
-                    await self._merge_storage_state_from_context(ctx)
-                finally:
-                    await page.close()
-                    await ctx.close()
-                raise last_err
-
-        try:
+            await self._handle_nav_with_retries(
+                page,
+                target_url=url,
+                wait_until=wait_until,
+                timeout_ms=timeout_ms,
+                attempts=attempts_left,
+                on_retry=None,
+            )
             yield page
         finally:
             # обновляем внутреннее состояние из контекста
@@ -400,33 +414,17 @@ class Session:
 
         # первая попытка
         try:
-            await page.goto(
-                response.url.full_url,
-                wait_until=wait_until,
-                timeout=timeout_ms,
-            )
-        except PlaywrightTimeoutError as last_err:
-            while attempts_left > 0:
-                attempts_left -= 1
-                try:
-                    await _attach_route_once()
-                    if page.url and page.url != "about:blank":
-                        await page.reload(wait_until=wait_until, timeout=timeout_ms)
-                    else:
-                        await page.goto(response.url.full_url, wait_until=wait_until, timeout=timeout_ms)
-                    last_err = None  # type: ignore[assignment]
-                    break
-                except PlaywrightTimeoutError as e:
-                    last_err = e
-            if last_err is not None:
-                try:
-                    await self._merge_storage_state_from_context(ctx)
-                finally:
-                    await page.close()
-                    await ctx.close()
-                raise last_err
+            async def _on_retry() -> None:
+                await _attach_route_once()
 
-        try:
+            await self._handle_nav_with_retries(
+                page,
+                target_url=response.url.full_url,
+                wait_until=wait_until,
+                timeout_ms=timeout_ms,
+                attempts=attempts_left,
+                on_retry=_on_retry,
+            )
             yield page
         finally:
             await self._merge_storage_state_from_context(ctx)
