@@ -3,7 +3,7 @@ REPO_ROOT := $(realpath $(CURDIR)/../..)
 PY        ?= python
 
 # ======= Config (override via env/CLI) =======
-RUNS       ?= 10
+RUNS       ?= 2
 BROWSERS   ?= firefox,chromium,webkit,camoufox
 STEALTH    ?= stealth,base
 MODES      ?= goto,render

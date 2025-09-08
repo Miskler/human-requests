@@ -64,6 +64,7 @@ async def _load_with_retry(load_fn, *, max_attempts: int = 3, timeout_ms: int = 
             return await load_fn(timeout_ms)
         except PlaywrightTimeoutError as e:
             last_exc = e
+            await asyncio.sleep(1)
             # перезагрузка заложена в конкретных функций ниже (goto/render)
         except Exception as e:
             # любые другие ошибки — пробрасываем сразу
