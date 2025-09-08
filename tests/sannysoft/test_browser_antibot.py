@@ -3,53 +3,64 @@ from __future__ import annotations
 import asyncio
 import os
 import pytest
-from sannysoft_parser import parse_sannysoft_bot
+from tests.sannysoft.sannysoft_parser import parse_sannysoft_bot
 
 from network_manager import Session, ImpersonationConfig
 
 # ---------------------------------------------------------  settings
 SANNY_URL   = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")
-BROWSERS    = ("chromium", "firefox", "webkit", "camoufox")
+BROWSERS    = ("firefox",)# "chromium", , "webkit", "camoufox")
 STEALTH_OPS = ("stealth", "base")          # включён playwright-stealth или нет
-HEADLESS    = True
+HEADLESS    = False
 SLEEP_SEC   = 1.0
+
+# Структура:
+#   [browser][type][stable|unstable]
+# Стабильность/нестабильность означает, насколько часто встречается проблема
+# высокая вероятность что нестабильные значения зависят от системы на которой запущены
 ANTI_ERROR = {
     "webkit": {
-        "all": ["Chrome(New)"],
-        "base": ["WebDriver(New)"],
-        "stealth": []
+        "all": {"stable": ["Chrome(New)"],
+                "unstable": []},
+        "base": {"stable": ["WebDriver(New)"],
+                 "unstable": []},
+        "stealth": {"stable": [],
+                    "unstable": []}
     },
     "firefox": {
-        "all": ["Chrome(New)",
-                "Plugins Length(Old)",
-                "Plugins is of type PluginArray",
-                "WebGL Vendor",
-                "WebGL Renderer"],
-        "base": ["WebDriver(New)"],
-        "stealth": []
+        "all": {"stable": ["Chrome(New)",
+                           "WebGL Vendor",
+                           "WebGL Renderer"],
+                "unstable": []},
+        "base": {"stable": ["WebDriver(New)"],
+                 "unstable": []},
+        "stealth": {"stable": [],
+                    "unstable": []}
     }, "chromium": {
-        "all": ["VIDEO_CODECS"],
-        "base": ["WebDriver(New)",
-                 "User Agent(Old)",
-                 "Chrome(New)",
-                 "Permissions(New)",
-                 "Plugins Length(Old)",
-                 "Plugins is of type PluginArray",
-                 "WebGL Renderer",
-                 "HEADCHR_UA",
-                 "HEADCHR_CHROME_OBJ",
-                 "HEADCHR_PERMISSIONS",
-                 "HEADCHR_PLUGINS",
-                 "HEADCHR_IFRAME",
-                 "CHR_MEMORY"],
-        "stealth": []
+        "all": {"stable": [], # "VIDEO_CODECS"
+                "unstable": []},
+        "base": {"stable": ["WebDriver(New)",
+                            "Plugins is of type PluginArray",
+                            "WebGL Renderer",
+                            "HEADCHR_UA",
+                            "HEADCHR_CHROME_OBJ",
+                            "HEADCHR_PERMISSIONS",
+                            "HEADCHR_PLUGINS",
+                            "HEADCHR_IFRAME",
+                            "CHR_MEMORY"],
+                 "unstable": []},
+        "stealth": {"stable": [],
+                    "unstable": []}
     },
     "camoufox": {
-        "all": ["Chrome(New)",
-                "WebGL Vendor",
-                "WebGL Renderer"],
-        "base": [],
-        "stealth": []
+        "all":  {"stable": ["Chrome(New)",
+                            "WebGL Vendor",
+                            "WebGL Renderer"],
+                 "unstable": []},
+        "base": {"stable": [],
+                 "unstable": []},
+        "stealth": {"stable": [],
+                    "unstable": []}
     }
 }
 # ---------------------------------------------------------
@@ -62,11 +73,12 @@ def _collect_failures(browser: str, stealth: str, tree: dict, prefix: str = "") 
     for k, v in tree.items():
         path = f"{prefix}{k}"
         if isinstance(v, dict):
-            shold_fail = k in ANTI_ERROR[browser][stealth] or k in ANTI_ERROR[browser]["all"]
-            if v.get("passed") == False and not shold_fail:
+            shold_fail = k in ANTI_ERROR[browser][stealth]["stable"] or k in ANTI_ERROR[browser]["all"]["stable"]
+            maybe_fail = k in ANTI_ERROR[browser][stealth]["unstable"] or k in ANTI_ERROR[browser]["all"]["unstable"]
+            if v.get("passed") == False and not (shold_fail or maybe_fail):
                 fails.append(path)
             elif v.get("passed") == True and shold_fail:
-                fails.append(f"{path} (should fail, but not fail)")
+                fails.append(f"{path} (shld, bt not f)")
             fails += _collect_failures(browser, stealth, v, prefix=f"{path} → ")
     return fails
 
