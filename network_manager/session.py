@@ -71,6 +71,7 @@ class Session:
         spoof: ImpersonationConfig | None = None,
         playwright_stealth: bool = True,
         page_retry: int = 2,
+        direct_retry: int = 1,
     ) -> None:
         """
         Args:
@@ -79,7 +80,8 @@ class Session:
             browser: "chromium", "firefox", "webkit" — стандартные браузеры, "camoufox" — спец. сборка firefox
             spoof: конфиг для direct-запросов
             playwright_stealth: прячет некоторые сигнатуры автоматизированного браузера
-            page_retry: число «мягких» повторов навигации (после первичной). Используется по умолчанию.
+            page_retry: число «мягких» повторов навигации страницы (после первичной)
+            direct_retry: число повторов direct-запроса при curl_cffi Timeout (после первичной)
         """
 
         self.timeout: float = timeout
@@ -88,6 +90,7 @@ class Session:
         self.spoof: ImpersonationConfig = spoof or ImpersonationConfig()
         self.playwright_stealth: bool = bool(playwright_stealth)
         self.page_retry: int = int(page_retry)
+        self.direct_retry: int = int(direct_retry)
 
         # camoufox несовместим со stealth
         if self.browser_name == "camoufox" and self.playwright_stealth:
@@ -204,6 +207,7 @@ class Session:
         url: str,
         *,
         headers: Optional[Mapping[str, str]] = None,
+        retry: int | None = None,
         **kwargs,
     ) -> Response:
         """
@@ -212,9 +216,10 @@ class Session:
         Опционально можно передать дополнительные заголовки.
 
         Через **kwargs можно передать дополнительные параметры curl_cffi.AsyncSession.request (см. их документацию для подробностей).
+        Повторяем ТОЛЬКО при cffi Timeout: ``curl_cffi.requests.exceptions.Timeout``.
         """
         method_enum = method if isinstance(method, HttpMethod) else HttpMethod[str(method).upper()]
-        req_headers = {k.lower(): v for k, v in (headers or {}).items()}
+        base_headers = {k.lower(): v for k, v in (headers or {}).items()}
 
         # lazy curl session
         if self._curl is None:
@@ -222,27 +227,50 @@ class Session:
 
         # spoof UA / headers
         imper_profile = self.spoof.choose(self.browser_name)
-        req_headers.update(self.spoof.forge_headers(imper_profile))
+        base_headers.update(self.spoof.forge_headers(imper_profile))
 
-        # Cookie header
+        # Cookie header (фиксируем один раз на первую попытку)
         url_parts = urlsplit(url)
         cookie_header, sent_cookies = compose_cookie_header(
-            url_parts, req_headers, list(self.cookies)
+            url_parts, base_headers, list(self.cookies)
         )
         if cookie_header:
-            req_headers["cookie"] = cookie_header
+            base_headers["cookie"] = cookie_header
 
-        # perform
-        t0 = perf_counter()
-        r = await self._curl.request(
-            method_enum.value,
-            url,
-            headers=req_headers,
-            impersonate=imper_profile,
-            timeout=self.timeout,
-            **kwargs,
-        )
-        duration = perf_counter() - t0
+        attempts_left = self.direct_retry if retry is None else int(retry)
+        last_err: Exception | None = None
+
+        async def _do_request() -> tuple:
+            # Возвращаем (r, duration)
+            req_headers = dict(base_headers)  # копия на попытку
+            t0 = perf_counter()
+            r = await self._curl.request(
+                method_enum.value,
+                url,
+                headers=req_headers,
+                impersonate=imper_profile,
+                timeout=self.timeout,
+                **kwargs,
+            )
+            duration = perf_counter() - t0
+            return r, duration
+
+        # первая попытка + мягкие повторы на Timeout
+        try:
+            r, duration = await _do_request()
+        except cffi_requests.exceptions.Timeout as e:  # type: ignore[attr-defined]
+            last_err = e
+            while attempts_left > 0:
+                attempts_left -= 1
+                try:
+                    r, duration = await _do_request()
+                    last_err = None
+                    break
+                except cffi_requests.exceptions.Timeout as e2:  # type: ignore[attr-defined]
+                    last_err = e2
+            if last_err is not None:
+                raise last_err
+        # ── success ────────────────────────────────────────────────────────────
 
         # response → cookies
         resp_headers = {k.lower(): v for k, v in r.headers.items()}
@@ -261,7 +289,7 @@ class Session:
         req_model = Request(
             method=method_enum,
             url=URL(full_url=url),
-            headers=dict(req_headers),
+            headers=dict(base_headers),
             body=data or json_body or files or None,
             cookies=sent_cookies,
         )
@@ -288,8 +316,7 @@ class Session:
     ) -> AsyncGenerator[Page, None]:
         """
         Открытие страницы в браузере.
-        ВАЖНО: контекст создаётся на каждый вызов и закрывается при выходе.
-        Повторы НЕ пересоздают контекст/страницу — используется «мягкий reload».
+        Контекст одноразовый; повторы НЕ пересоздают контекст/страницу — «мягкий reload».
         """
         await self._ensure_browser()
 
@@ -346,8 +373,8 @@ class Session:
         """
         Офлайн-рендер Response: создаём временный контекст (с нашим storage_state),
         перехватываем первый запрос и отвечаем подготовленным телом.
-        Повторы НЕ пересоздают контекст/страницу — делаем «мягкий reload».
-        На каждый повтор перевешиваем route, чтобы снова отдать подготовленный ответ.
+        Повторы НЕ пересоздают контекст/страницу — «мягкий reload», при этом
+        на каждый повтор перевешиваем одноразовый route.
         """
         await self._ensure_browser()
 
