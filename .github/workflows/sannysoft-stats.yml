@@ -72,3 +72,10 @@ jobs:
           else
             xvfb-run -s "-screen 0 1920x1080x24" python tests/sannysoft/collect_antibot_stats.py
           fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser_antibot_sannysoft
+          path: tests/sannysoft/browser_antibot_sannysoft.json
+          if-no-files-found: error
