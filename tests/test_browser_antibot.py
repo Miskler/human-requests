@@ -29,7 +29,19 @@ ANTI_ERROR  = {
     },
     "chromium": {
         "all": ["VIDEO_CODECS"],
-        "base": ["WebDriver(New)"],
+        "base": ["WebDriver(New)",
+                 "User Agent(Old)",
+                 "Chrome(New)",
+                 "Permissions(New)",
+                 "Plugins Length(Old)",
+                 "Plugins is of type PluginArray",
+                 "WebGL Renderer",
+                 "HEADCHR_UA",
+                 "HEADCHR_CHROME_OBJ",
+                 "HEADCHR_PERMISSIONS",
+                 "HEADCHR_PLUGINS",
+                 "HEADCHR_IFRAME",
+                 "CHR_MEMORY"],
         "stealth": [],
     },
     "camoufox": {
@@ -50,8 +62,11 @@ def _collect_failures(browser: str, stealth: str, tree: dict, prefix: str = "") 
     for k, v in tree.items():
         path = f"{prefix}{k}"
         if isinstance(v, dict):
-            if v.get("passed") == False and k not in ANTI_ERROR[browser][stealth] and k not in ANTI_ERROR[browser]["all"]:
+            shold_fail = k not in ANTI_ERROR[browser][stealth] and k not in ANTI_ERROR[browser]["all"]
+            if v.get("passed") == False and not shold_fail:
                 fails.append(path)
+            elif v.get("passed") == True and shold_fail:
+                fails.append(f"{path} (should fail, but not fail)")
             fails += _collect_failures(browser, stealth, v, prefix=f"{path} → ")
     return fails
 

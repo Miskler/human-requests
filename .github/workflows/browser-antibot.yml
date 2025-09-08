@@ -1,11 +1,7 @@
 name: Browser antibot tests
 
 on:
-  push:
-    paths:
-      - '**/*.py'
-      - 'requirements.txt'
-      - '.github/workflows/browser-antibot.yml'
+  workflow_dispatch:
   pull_request:
 
 jobs:
