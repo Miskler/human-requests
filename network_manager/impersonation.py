@@ -18,11 +18,12 @@ _ENGINE_FAM = {
     "edge":     "chrome",
     "opera":    "chrome",
     "yandex":   "chrome",
-    "firefox":  "firefox",
     "webkit":   "safari",
-    "camoufox": "firefox"
+    "firefox":  "firefox",
+    "camoufox": "firefox",
+    "tor":      "firefox",
 }
-_SPOOF_ENGINES_FAM = ["chrome", "firefox", "safari", "edge", "opera"]
+_SPOOF_ENGINES_FAM = ["chrome", "firefox", "safari", "edge", "opera", "tor"]
 
 
 def _family(profile: str) -> str:  # 'chrome122' -> 'chrome'

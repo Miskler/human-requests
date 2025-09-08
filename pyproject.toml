@@ -34,7 +34,7 @@ dependencies = [
 [project.optional-dependencies]
 playwright         = ["playwright"]
 stealth-playwright = ["playwright,playwright-stealth"] # Тянет playwright зависимостью
-camoufox           = ["camoufox"]
+camoufox           = ["camoufox[geoip]"]
 dev = [
     "selectolax",
 

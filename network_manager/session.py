@@ -5,12 +5,10 @@ core.session — единая state-ful-сессия для *curl_cffi* и *Play
 
 Главные методы
 ==============
-* ``Session.requests``  — низкоуровневый HTTP-запрос (curl_cffi) с cookie-jar.
-* ``Session.goto_page`` — открывает URL в браузере, возвращает
-  :class:`playwright.sync_api.Page` внутри контекст-менеджера и после выхода
-  подтягивает новые куки в сессию.
-* ``Response.render``   — офлайн-рендер заранее полученного Response через
-  приватный ``Session._render_response``.
+* ``Session.request``   — низкоуровневый HTTP-запрос (curl_cffi) с cookie-jar.
+* ``Session.goto_page`` — открывает URL в браузере, возвращает Page внутри
+  контекст-менеджера; по выходу синхронизирует cookies + localStorage.
+* ``Response.render``   — офлайн-рендер заранее полученного Response.
 
 Опциональные зависимости
 ========================
@@ -23,7 +21,7 @@ core.session — единая state-ful-сессия для *curl_cffi* и *Play
 
 from contextlib import asynccontextmanager
 from time import perf_counter
-from typing import Literal, Mapping, Optional
+from typing import AsyncGenerator, Literal, Mapping, Optional
 from urllib.parse import urlsplit
 
 from curl_cffi import requests as cffi_requests
@@ -68,13 +66,22 @@ class Session:
         spoof: ImpersonationConfig | None = None,
         playwright_stealth: bool = True,
     ) -> None:
+        """
+        Args:
+            timeout: стандартный таймаут для direct и goto запросов
+            headless: запускать ли только движок, или еще и рендер? (без рендера порой ломается, особенно на малопопулярных сборках линукс, пример Mint)
+            browser: "chromium", "firefox", "webkit" - стандартные браузеры, "camoufox" - специальная сборка firefox для веб скрапинга
+            spoof: конфиг для direct запросов
+            playwright_stealth: прячет некоторые сигнатуры автоматизированного браузера (актуально для стандартных браузеров, в camoufox это есть по умолчанию)
+        """
+
         self.timeout: float = timeout
         self.headless: bool = headless
         self.browser_name: Literal["chromium", "firefox", "webkit", "camoufox"] = browser
         self.spoof: ImpersonationConfig = spoof or ImpersonationConfig()
         self.playwright_stealth: bool = bool(playwright_stealth)
 
-        # camoufox несовместим со stealth (по вашим требованиям)
+        # camoufox несовместим со stealth
         if self.browser_name == "camoufox" and self.playwright_stealth:
             raise RuntimeError(
                 "playwright_stealth=True несовместим с browser='camoufox'. "
@@ -82,15 +89,22 @@ class Session:
             )
 
         self.cookies: CookieManager = CookieManager([])
+        """Хранилище-синхронизатор кук"""
+
+        # localStorage теперь по origin
+        # пример: {"https://example.com": {"k1": "v1", "k2": "v2"}}
+        self.local_storage: dict[str, dict[str, str]] = {}
+        """Хранилище-синхронизатор localStorage.
+        
+        sessionStorage сюда не входит, он удаляется сразу же после выхода из goto/render."""
 
         self._curl: Optional[cffi_requests.AsyncSession] = None
         self._pw = None  # Playwright instance (или stealth-обёртка)
-        self._stealth_cm = None  # контекстный менеджер stealth, если используется
-        self._camoufox_cm = None  # контекстный менеджер Camoufox, если используется
+        self._stealth_cm = None  # контекстный менеджер stealth
+        self._camoufox_cm = None  # контекстный менеджер Camoufox
         self._browser = None
-        self._context: Optional[BrowserContext] = None
 
-    # ────── lazy browser init ──────
+    # ────── lazy browser init (без контекста!) ──────
     async def _ensure_browser(self) -> None:
         # Playwright (с Stealth, если включён)
         if self._pw is None:
@@ -127,11 +141,53 @@ class Session:
                     headless=self.headless
                 )
 
-        # Контекст
-        if self._context is None:
-            self._context = await self._browser.new_context()
-            if self.cookies:
-                await self._context.add_cookies(self.cookies.to_playwright())
+    # ────── storage_state helpers ──────
+    def _build_storage_state_for_context(self) -> dict:
+        """
+        Собирает единый storage_state для new_context:
+        - cookies — из CookieManager (как playwright-совместимые dict)
+        - origins.localStorage — из self.local_storage
+        """
+        cookie_list = self.cookies.to_playwright()  # list[dict] совместимая с PW
+        origins = []
+        for origin, kv in self.local_storage.items():
+            if not kv:
+                continue
+            origins.append(
+                {
+                    "origin": origin,
+                    "localStorage": [{"name": k, "value": v} for k, v in kv.items()],
+                }
+            )
+        return {"cookies": cookie_list, "origins": origins}
+
+    async def _merge_storage_state_from_context(self, ctx: BrowserContext) -> None:
+        """
+        Читает storage_state из контекста и синхронизирует внутреннее состояние:
+        - localStorage: ПОЛНАЯ перезапись self.local_storage из state["origins"]
+        - cookies: ДОБАВЛЕНИЕ/ОБНОВЛЕНИЕ в CookieManager из state["cookies"]
+        """
+        state = await ctx.storage_state()  # dict с 'cookies' и 'origins'
+        # localStorage — точная перезапись
+        new_ls: dict[str, dict[str, str]] = {}
+        for o in state.get("origins", []) or []:
+            origin = str(o.get("origin", ""))
+            if not origin:
+                continue
+            kv: dict[str, str] = {}
+            for pair in o.get("localStorage", []) or []:
+                name = str(pair.get("name", ""))
+                value = "" if pair.get("value") is None else str(pair.get("value"))
+                if name:
+                    kv[name] = value
+            new_ls[origin] = kv
+        self.local_storage = new_ls
+
+        # cookies — пополняем CookieManager
+        cookies_list = state.get("cookies", []) or []
+        if cookies_list:
+            # add_from_playwright принимает список cookie-словари в формате PW
+            self.cookies.add_from_playwright(cookies_list)
 
     # ────── public: async HTTP ──────
     async def request(
@@ -149,7 +205,6 @@ class Session:
 
         Через **kwargs можно передать дополнительные параметры curl_cffi.AsyncSession.request (см. их документацию для подробностей).
         """
-
         method_enum = method if isinstance(method, HttpMethod) else HttpMethod[str(method).upper()]
         req_headers = {k.lower(): v for k, v in (headers or {}).items()}
 
@@ -221,23 +276,25 @@ class Session:
         url: str,
         *,
         wait_until: Literal["commit", "load", "domcontentloaded", "networkidle"] = "commit",
-    ) -> Page:
-        """Открытие страницы в браузере. Возвращается Playwright Page."""
-
+    ) -> AsyncGenerator[Page, None]:
+        """
+        Открытие страницы в браузере.
+        ВАЖНО: контекст создаётся на каждый вызов и закрывается при выходе.
+        """
         await self._ensure_browser()
-        ctx = self._context
-        assert ctx is not None
 
-        if self.cookies:
-            await ctx.add_cookies(self.cookies.to_playwright())
-
+        # создаём новый контекст с ЕДИНЫМ storage_state
+        storage_state = self._build_storage_state_for_context()
+        ctx = await self._browser.new_context(storage_state=storage_state)  # type: ignore[union-attr]
         page = await ctx.new_page()
         try:
             await page.goto(url, wait_until=wait_until, timeout=self.timeout * 1000)
             yield page
         finally:
-            self.cookies.add_from_playwright(await ctx.cookies())
+            # обновляем внутреннее состояние из контекста
+            await self._merge_storage_state_from_context(ctx)
             await page.close()
+            await ctx.close()
 
     # ────── offline render ──────
     @asynccontextmanager
@@ -246,13 +303,15 @@ class Session:
         response: Response,
         *,
         wait_until: Literal["load", "domcontentloaded", "networkidle"] = "domcontentloaded",
-    ) -> Page:
+    ) -> AsyncGenerator[Page, None]:
+        """
+        Офлайн-рендер Response: создаём временный контекст (с нашим storage_state),
+        перехватываем первый запрос и отвечаем подготовленным телом.
+        """
         await self._ensure_browser()
-        ctx = self._context
-        assert ctx is not None
 
-        if response.cookies:
-            await ctx.add_cookies([c.to_playwright_like_dict() for c in response.cookies])
+        storage_state = self._build_storage_state_for_context()
+        ctx = await self._browser.new_context(storage_state=storage_state)  # type: ignore[union-attr]
 
         async def handler(route, _req):  # noqa: ANN001
             await route.fulfill(
@@ -271,16 +330,13 @@ class Session:
             )
             yield page
         finally:
-            self.cookies.add_from_playwright(await ctx.cookies())
+            await self._merge_storage_state_from_context(ctx)
             await page.close()
+            await ctx.close()
 
     # ────── cleanup ──────
     async def close(self) -> None:
-        if self._context:
-            await self._context.close()
-            self._context = None
-
-        # Handle Camoufox context separately
+        # Закрываем браузер/движки (контекстов к этому моменту нет — они одноразовые)
         if self.browser_name == "camoufox" and self._camoufox_cm is not None:
             await self._camoufox_cm.__aexit__(None, None, None)
             self._camoufox_cm = None
