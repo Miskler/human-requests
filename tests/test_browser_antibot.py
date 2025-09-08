@@ -13,29 +13,44 @@ BROWSERS    = ("chromium", "firefox", "webkit", "camoufox")
 STEALTH_OPS = ("stealth", "base")          # включён playwright-stealth или нет
 HEADLESS    = True
 SLEEP_SEC   = 1.0
-ANTI_ERROR  = {
+ANTI_ERROR = {
     "webkit": {
         "all": ["Chrome(New)"],
         "base": ["WebDriver(New)"],
-        "stealth": [],
+        "stealth": []
     },
     "firefox": {
-        "all": ["Chrome(New)"],
+        "all": ["Chrome(New)",
+                "Plugins Length(Old)",
+                "Plugins is of type PluginArray",
+                "WebGL Vendor",
+                "WebGL Renderer"],
         "base": ["WebDriver(New)"],
-        "stealth": [],
-    },
-    "chromium": {
-        "all": [],
-        "base": ["WebDriver(New)"],
-        "stealth": [],
+        "stealth": []
+    }, "chromium": {
+        "all": ["VIDEO_CODECS"],
+        "base": ["WebDriver(New)",
+                 "User Agent(Old)",
+                 "Chrome(New)",
+                 "Permissions(New)",
+                 "Plugins Length(Old)",
+                 "Plugins is of type PluginArray",
+                 "WebGL Renderer",
+                 "HEADCHR_UA",
+                 "HEADCHR_CHROME_OBJ",
+                 "HEADCHR_PERMISSIONS",
+                 "HEADCHR_PLUGINS",
+                 "HEADCHR_IFRAME",
+                 "CHR_MEMORY"],
+        "stealth": []
     },
     "camoufox": {
         "all": ["Chrome(New)",
                 "WebGL Vendor",
                 "WebGL Renderer"],
         "base": [],
-        "stealth": [],
-    },
+        "stealth": []
+    }
 }
 # ---------------------------------------------------------
 
