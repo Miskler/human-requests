@@ -11,7 +11,7 @@ from network_manager import Session, ImpersonationConfig
 SANNY_URL   = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")
 BROWSERS    = ("chromium", "firefox", "webkit", "camoufox")
 STEALTH_OPS = ("stealth", "base")          # включён playwright-stealth или нет
-SLEEP_SEC   = 3.0                    # как требовалось в ТЗ
+SLEEP_SEC   = 3.0
 ANTI_ERROR  = {
     "webkit": {
         "all": ["Chrome(New)"],
@@ -19,29 +19,13 @@ ANTI_ERROR  = {
         "stealth": [],
     },
     "firefox": {
-        "all": ["Chrome(New)",
-                "Plugins Length(Old)",
-                "Plugins is of type PluginArray",
-                "WebGL Vendor",
-                "WebGL Renderer"],
+        "all": ["Chrome(New)"],
         "base": ["WebDriver(New)"],
         "stealth": [],
     },
     "chromium": {
-        "all": ["VIDEO_CODECS"],
-        "base": ["WebDriver(New)",
-                 "User Agent(Old)",
-                 "Chrome(New)",
-                 "Permissions(New)",
-                 "Plugins Length(Old)",
-                 "Plugins is of type PluginArray",
-                 "WebGL Renderer",
-                 "HEADCHR_UA",
-                 "HEADCHR_CHROME_OBJ",
-                 "HEADCHR_PERMISSIONS",
-                 "HEADCHR_PLUGINS",
-                 "HEADCHR_IFRAME",
-                 "CHR_MEMORY"],
+        "all": [],
+        "base": ["WebDriver(New)"],
         "stealth": [],
     },
     "camoufox": {
@@ -72,7 +56,7 @@ def _collect_failures(browser: str, stealth: str, tree: dict, prefix: str = "") 
 
 
 async def _html_via_goto(session: Session) -> str:
-    async with session.goto_page(SANNY_URL) as p:
+    async with session.goto_page(SANNY_URL, wait_until="networkidle") as p:
         await asyncio.sleep(SLEEP_SEC)
         return await p.content()
 
