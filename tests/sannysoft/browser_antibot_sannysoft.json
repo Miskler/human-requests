@@ -1,0 +1,234 @@
+{
+  "firefox": {
+    "all": {
+      "stable": [],
+      "unstable": [
+        "Broken Image Dimensions"
+      ]
+    },
+    "base": {
+      "stable": [
+        "Chrome(New)",
+        "Plugins Length(Old)",
+        "Plugins is of type PluginArray",
+        "WebDriver(New)"
+      ],
+      "unstable": []
+    },
+    "stealth": {
+      "stable": [],
+      "unstable": []
+    },
+    "fail_counts": {
+      "base": {
+        "attempts": 8,
+        "total": {
+          "Chrome(New)": 8,
+          "Plugins Length(Old)": 8,
+          "Plugins is of type PluginArray": 8,
+          "WebDriver(New)": 8,
+          "Broken Image Dimensions": 4
+        },
+        "modes": {
+          "goto": {
+            "Chrome(New)": 4,
+            "Plugins Length(Old)": 4,
+            "Plugins is of type PluginArray": 4,
+            "WebDriver(New)": 4
+          },
+          "render": {
+            "Broken Image Dimensions": 4,
+            "Chrome(New)": 4,
+            "Plugins Length(Old)": 4,
+            "Plugins is of type PluginArray": 4,
+            "WebDriver(New)": 4
+          }
+        }
+      },
+      "stealth": {
+        "attempts": 8,
+        "total": {
+          "Broken Image Dimensions": 4
+        },
+        "modes": {
+          "goto": {},
+          "render": {
+            "Broken Image Dimensions": 4
+          }
+        }
+      }
+    },
+    "timings": {
+      "average_time_response": 5.414065363500185,
+      "minimum_time_response": 4.134463202999541,
+      "maximum_time_response": 7.561771331000273,
+      "unit": "seconds"
+    }
+  },
+  "chromium": {
+    "all": {
+      "stable": [],
+      "unstable": [
+        "Broken Image Dimensions"
+      ]
+    },
+    "base": {
+      "stable": [
+        "VIDEO_CODECS",
+        "WebDriver(New)"
+      ],
+      "unstable": []
+    },
+    "stealth": {
+      "stable": [],
+      "unstable": []
+    },
+    "fail_counts": {
+      "base": {
+        "attempts": 8,
+        "total": {
+          "VIDEO_CODECS": 8,
+          "WebDriver(New)": 8,
+          "Broken Image Dimensions": 4
+        },
+        "modes": {
+          "goto": {
+            "VIDEO_CODECS": 4,
+            "WebDriver(New)": 4
+          },
+          "render": {
+            "Broken Image Dimensions": 4,
+            "VIDEO_CODECS": 4,
+            "WebDriver(New)": 4
+          }
+        }
+      },
+      "stealth": {
+        "attempts": 8,
+        "total": {
+          "Broken Image Dimensions": 4
+        },
+        "modes": {
+          "goto": {},
+          "render": {
+            "Broken Image Dimensions": 4
+          }
+        }
+      }
+    },
+    "timings": {
+      "average_time_response": 4.208138288437453,
+      "minimum_time_response": 3.0873924190000253,
+      "maximum_time_response": 10.42208469400066,
+      "unit": "seconds"
+    }
+  },
+  "webkit": {
+    "all": {
+      "stable": [],
+      "unstable": [
+        "Broken Image Dimensions"
+      ]
+    },
+    "base": {
+      "stable": [
+        "Chrome(New)",
+        "WebDriver(New)"
+      ],
+      "unstable": []
+    },
+    "stealth": {
+      "stable": [],
+      "unstable": []
+    },
+    "fail_counts": {
+      "base": {
+        "attempts": 8,
+        "total": {
+          "Chrome(New)": 8,
+          "WebDriver(New)": 8,
+          "Broken Image Dimensions": 4
+        },
+        "modes": {
+          "goto": {
+            "Chrome(New)": 4,
+            "WebDriver(New)": 4
+          },
+          "render": {
+            "Broken Image Dimensions": 4,
+            "Chrome(New)": 4,
+            "WebDriver(New)": 4
+          }
+        }
+      },
+      "stealth": {
+        "attempts": 8,
+        "total": {
+          "Broken Image Dimensions": 4
+        },
+        "modes": {
+          "goto": {},
+          "render": {
+            "Broken Image Dimensions": 4
+          }
+        }
+      }
+    },
+    "timings": {
+      "average_time_response": 4.561682262187446,
+      "minimum_time_response": 2.7220940870010963,
+      "maximum_time_response": 7.786253674001273,
+      "unit": "seconds"
+    }
+  },
+  "camoufox": {
+    "all": {
+      "stable": [],
+      "unstable": []
+    },
+    "base": {
+      "stable": [
+        "Chrome(New)"
+      ],
+      "unstable": [
+        "Broken Image Dimensions"
+      ]
+    },
+    "stealth": {
+      "stable": [],
+      "unstable": []
+    },
+    "fail_counts": {
+      "base": {
+        "attempts": 8,
+        "total": {
+          "Chrome(New)": 8,
+          "Broken Image Dimensions": 4
+        },
+        "modes": {
+          "goto": {
+            "Chrome(New)": 4
+          },
+          "render": {
+            "Broken Image Dimensions": 4,
+            "Chrome(New)": 4
+          }
+        }
+      },
+      "stealth": {
+        "attempts": 0,
+        "total": {},
+        "modes": {
+          "goto": {},
+          "render": {}
+        }
+      }
+    },
+    "timings": {
+      "average_time_response": 6.799374610874793,
+      "minimum_time_response": 5.200260378998792,
+      "maximum_time_response": 10.27374976200008,
+      "unit": "seconds"
+    }
+  }
+}
