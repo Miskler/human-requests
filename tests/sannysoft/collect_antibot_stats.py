@@ -8,7 +8,6 @@ import os
 import sys
 import time
 from collections import defaultdict
-from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from pathlib import Path
 from typing import Any
 
@@ -18,10 +17,14 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 # --------------------------------------------------------------------
 
-from tqdm import tqdm  # прогрессбар по просьбе пользователя
+from tqdm import tqdm  # прогрессбар
 from network_manager import Session, ImpersonationConfig
-from sannysoft_parser import parse_sannysoft_bot
-
+from tests.sannysoft.sannysoft_parser import parse_sannysoft_bot
+from tests.sannysoft.tool import (
+    html_via_goto,
+    html_via_render,
+    collect_failed_props,
+)
 
 # ========================== CLI/ENV defaults ==========================
 def env_list(name: str, default_csv: str) -> list[str]:
@@ -42,90 +45,7 @@ OUT_PATH    = Path(OUT_JSON)
 OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
-# ============================== helpers ===============================
-# ——— robust wait & load with retry on selector-timeout ———
-async def _wait_fp_ready(page_like, timeout_ms: int = 10_000) -> None:
-    """
-    Ждём реальную готовность: в table#fp2 появились строки <tr>.
-    Если за timeout_ms не появляется — бросается PlaywrightTimeoutError.
-    """
-    await page_like.wait_for_selector("table#fp2", state="attached", timeout=timeout_ms)
-    await page_like.wait_for_selector("table#fp2 tr", state="attached", timeout=timeout_ms)
-
-async def _load_with_retry(load_fn, *, max_attempts: int = 3, timeout_ms: int = 10_000) -> str:
-    """
-    Универсальный загрузчик HTML с перезагрузкой страницы при таймауте селектора.
-    load_fn(page_like_ready_waiter) должен внутри вызвать _wait_fp_ready(...)
-    и вернуть HTML (str). При таймауте: перезагружает и повторяет до max_attempts.
-    """
-    last_exc: Exception | None = None
-    for attempt in range(1, max_attempts + 1):
-        try:
-            return await load_fn(timeout_ms)
-        except PlaywrightTimeoutError as e:
-            last_exc = e
-            await asyncio.sleep(1)
-            # перезагрузка заложена в конкретных функций ниже (goto/render)
-        except Exception as e:
-            # любые другие ошибки — пробрасываем сразу
-            raise
-    # если сюда дошли — всё плохо
-    assert last_exc is not None
-    raise last_exc
-
-async def _html_via_goto(session: Session, url: str) -> str:
-    async with session.goto_page(url, wait_until="load") as p:
-        async def _do(timeout_ms: int) -> str:
-            # первая попытка — как есть
-            try:
-                await _wait_fp_ready(p, timeout_ms=timeout_ms)
-                return await p.content()
-            except PlaywrightTimeoutError:
-                # перезагружаем страницу и ждём снова
-                await p.reload(wait_until="load")
-                await _wait_fp_ready(p, timeout_ms=timeout_ms)
-                return await p.content()
-        return await _load_with_retry(_do)
-
-async def _html_via_render(session: Session, url: str) -> str:
-    resp = await session.request("GET", url)
-    async with resp.render() as p:
-        async def _do(timeout_ms: int) -> str:
-            try:
-                await _wait_fp_ready(p, timeout_ms=timeout_ms)
-                return await p.content()
-            except PlaywrightTimeoutError:
-                # у render() нет .reload(), откроем новый render-контекст
-                # (закроется внешним finally в _run_once)
-                # для простоты: повторно делаем запрос и новый render-контекст
-                # через вспомогательную вложенную корутину
-                async def reopen_and_get() -> str:
-                    resp2 = await session.request("GET", url)
-                    async with resp2.render() as p2:
-                        await _wait_fp_ready(p2, timeout_ms=timeout_ms)
-                        return await p2.content()
-                return await reopen_and_get()
-        return await _load_with_retry(_do)
-
-
-def _collect_failed_props(tree: dict[str, Any]) -> set[str]:
-    """
-    Возвращает множество *чистых имён проверок* (без префиксов), у которых passed == False.
-    """
-    failed: set[str] = set()
-
-    def walk(node: Any):
-        if isinstance(node, dict):
-            for k, v in node.items():
-                if isinstance(v, dict):
-                    if "passed" in v and v.get("passed") is False:
-                        failed.add(k)  # только имя проверки
-                    walk(v)
-
-    walk(tree)
-    return failed
-
-
+# ============================== run one cell ==============================
 async def _run_once(browser: str, stealth: str, mode: str) -> tuple[set[str], float]:
     """
     Один запуск для ячейки (browser, stealth, mode):
@@ -137,7 +57,7 @@ async def _run_once(browser: str, stealth: str, mode: str) -> tuple[set[str], fl
 
     cfg = ImpersonationConfig(sync_with_engine=True)
     session = Session(
-        timeout=10,
+        timeout=15,
         headless=HEADLESS,
         browser=browser,
         playwright_stealth=(stealth == "stealth"),
@@ -146,16 +66,16 @@ async def _run_once(browser: str, stealth: str, mode: str) -> tuple[set[str], fl
 
     t0 = time.perf_counter()
     try:
-        html = await (_html_via_goto(session, SANNY_URL) if mode == "goto" else _html_via_render(session, SANNY_URL))
+        html = await (html_via_goto(session, SANNY_URL) if mode == "goto" else html_via_render(session, SANNY_URL))
         parsed = parse_sannysoft_bot(html)
-        failed = _collect_failed_props(parsed)
+        failed = collect_failed_props(parsed)
         elapsed = time.perf_counter() - t0
         return failed, elapsed
     finally:
         await session.close()
 
 
-# ============================== core logic ============================
+# ============================== core logic ==============================
 async def gather_stats(
     runs: int,
     browsers: list[str],
@@ -164,25 +84,11 @@ async def gather_stats(
     use_progress: bool = True,
 ) -> dict[str, Any]:
     """
-    Формирует структуру, совместимую с ANTI_ERROR + добавляет timings по браузеру:
-    {
-      "<browser>": {
-        "all":     {"stable": [...], "unstable": [...]},
-        "base":    {"stable": [...], "unstable": [...]},
-        "stealth": {"stable": [...], "unstable": [...]},
-        "fail_counts": {...},
-        "timings": {
-          "average_time_response": float,
-          "minimum_time_response": float,
-          "maximum_time_response": float,
-          "unit": "seconds"
-        }
-      }
-    }
+    Формирует структуру, совместимую с ANTI_ERROR + добавляет timings по браузеру.
     """
     result: dict[str, Any] = {}
 
-    # Посчитать общее число «шагов» для прогрессбара (без camoufox+stealth)
+    # «шаги» для прогрессбара (без camoufox+stealth)
     total_attempts = 0
     for b in browsers:
         for s in stealth_ops:
@@ -193,18 +99,14 @@ async def gather_stats(
     bar = tqdm(total=total_attempts, desc="Sannysoft stats", dynamic_ncols=True, unit="step") if use_progress else None
 
     for browser in browsers:
-        # счётчики фейлов
         total_counts = {"base": defaultdict(int), "stealth": defaultdict(int)}
         per_mode_counts = {
             "base": {m: defaultdict(int) for m in modes},
             "stealth": {m: defaultdict(int) for m in modes},
         }
         attempts = {"base": 0, "stealth": 0}
-
-        # тайминги по браузеру
         durations: list[float] = []
 
-        # прогоны
         for _ in range(runs):
             for stealth in stealth_ops:
                 for mode in modes:
@@ -223,10 +125,9 @@ async def gather_stats(
                     if bar:
                         bar.update(1)
 
-            # маленькая пауза между циклами, чтобы не злить антиботы
             await asyncio.sleep(0.2)
 
-        # классификация по каждому срезу
+        # классификация
         classified = {"base": {"stable": [], "unstable": []},
                       "stealth": {"stable": [], "unstable": []},
                       "all": {"stable": [], "unstable": []}}
@@ -240,7 +141,7 @@ async def gather_stats(
             classified[stealth]["stable"] = sorted(set(st))
             classified[stealth]["unstable"] = sorted(set(un))
 
-        # перенос совпадающих классификаций в all
+        # перенос совпадающих в all
         base_stable = set(classified["base"]["stable"])
         stealth_stable = set(classified["stealth"]["stable"])
         base_unstable = set(classified["base"]["unstable"])
@@ -257,7 +158,7 @@ async def gather_stats(
         classified["base"]["unstable"] = sorted(base_unstable - set(all_unstable))
         classified["stealth"]["unstable"] = sorted(stealth_unstable - set(all_unstable))
 
-        # тайминги по браузеру
+        # тайминги
         if durations:
             avg_t = sum(durations) / len(durations)
             min_t = min(durations)
@@ -265,7 +166,6 @@ async def gather_stats(
         else:
             avg_t = min_t = max_t = 0.0
 
-        # собрать браузерный блок
         result[browser] = {
             "all":     {"stable": classified["all"]["stable"],     "unstable": classified["all"]["unstable"]},
             "base":    {"stable": classified["base"]["stable"],    "unstable": classified["base"]["unstable"]},
@@ -299,7 +199,7 @@ async def gather_stats(
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Собрать стабильные/нестабильные фейлы sannysoft (формат ANTI_ERROR).")
-    ap.add_argument("--runs", type=int, default=RUNS, help="Сколько раз прогонять матрицу (по умолчанию 20).")
+    ap.add_argument("--runs", type=int, default=RUNS, help="Сколько раз прогонять матрицу (по умолчанию 10).")
     ap.add_argument("--browsers", type=str, default=",".join(BROWSERS),
                     help="Список браузеров через запятую (firefox,chromium,webkit,camoufox).")
     ap.add_argument("--stealth", type=str, default=",".join(STEALTH_OPS),
