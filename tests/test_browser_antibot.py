@@ -11,7 +11,8 @@ from network_manager import Session, ImpersonationConfig
 SANNY_URL   = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")
 BROWSERS    = ("chromium", "firefox", "webkit", "camoufox")
 STEALTH_OPS = ("stealth", "base")          # включён playwright-stealth или нет
-SLEEP_SEC   = 10.0
+HEADLESS    = True
+SLEEP_SEC   = 1.0
 ANTI_ERROR  = {
     "webkit": {
         "all": ["Chrome(New)"],
@@ -46,7 +47,7 @@ def _collect_failures(browser: str, stealth: str, tree: dict, prefix: str = "") 
     for k, v in tree.items():
         path = f"{prefix}{k}"
         if isinstance(v, dict):
-            shold_fail = k not in ANTI_ERROR[browser][stealth] and k not in ANTI_ERROR[browser]["all"]
+            shold_fail = k in ANTI_ERROR[browser][stealth] or k in ANTI_ERROR[browser]["all"]
             if v.get("passed") == False and not shold_fail:
                 fails.append(path)
             elif v.get("passed") == True and shold_fail:
@@ -86,6 +87,7 @@ async def test_antibot_matrix(browser: str, stealth: str, mode: str):
     cfg = ImpersonationConfig(sync_with_engine=True)
     session = Session(
         timeout=10,
+        headless=HEADLESS,
         browser=browser,
         playwright_stealth=stealth == "stealth",
         spoof=cfg,
