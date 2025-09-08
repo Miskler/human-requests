@@ -50,11 +50,10 @@ jobs:
         run: |
           python -m pip install -U pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          # на всякий ставим зависимости напрямую, если их нет в requirements:
           pip install playwright tqdm
           python -m playwright install --with-deps
 
-      - name: Run collector
+      - name: Run collector (headed via xvfb)
         env:
           PYTHONPATH: ${{ github.workspace }}
           SANNYSOFT_URL: ${{ github.event.inputs.url }}
@@ -67,11 +66,9 @@ jobs:
           OUT_JSON: tests/sannysoft/browser_antibot_sannysoft.json
         run: |
           mkdir -p tests/sannysoft
-          python tests/sannysoft/collect_antibot_stats.py
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: browser_antibot_sannysoft
-          path: tests/sannysoft/browser_antibot_sannysoft.json
-          if-no-files-found: error
+          # “виртуальный” дисплей с нормальной глубиной цвета
+          if [ "${{ github.event.inputs.headless }}" = "true" ]; then
+            python tests/sannysoft/collect_antibot_stats.py
+          else
+            xvfb-run -s "-screen 0 1920x1080x24" python tests/sannysoft/collect_antibot_stats.py
+          fi
