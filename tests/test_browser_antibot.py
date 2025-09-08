@@ -11,7 +11,7 @@ from network_manager import Session, ImpersonationConfig
 SANNY_URL   = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")
 BROWSERS    = ("chromium", "firefox", "webkit", "camoufox")
 STEALTH_OPS = ("stealth", "base")          # включён playwright-stealth или нет
-SLEEP_SEC   = 3.0
+SLEEP_SEC   = 6.0
 ANTI_ERROR  = {
     "webkit": {
         "all": ["Chrome(New)"],
@@ -56,7 +56,7 @@ def _collect_failures(browser: str, stealth: str, tree: dict, prefix: str = "") 
 
 
 async def _html_via_goto(session: Session) -> str:
-    async with session.goto_page(SANNY_URL, wait_until="networkidle") as p:
+    async with session.goto_page(SANNY_URL, wait_until="load") as p:
         await asyncio.sleep(SLEEP_SEC)
         return await p.content()
 
