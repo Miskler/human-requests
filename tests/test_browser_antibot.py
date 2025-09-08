@@ -11,7 +11,7 @@ from network_manager import Session, ImpersonationConfig
 SANNY_URL   = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")
 BROWSERS    = ("chromium", "firefox", "webkit", "camoufox")
 STEALTH_OPS = ("stealth", "base")          # включён playwright-stealth или нет
-SLEEP_SEC   = 6.0
+SLEEP_SEC   = 10.0
 ANTI_ERROR  = {
     "webkit": {
         "all": ["Chrome(New)"],
