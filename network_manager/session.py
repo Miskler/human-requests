@@ -25,7 +25,12 @@ from typing import AsyncGenerator, Literal, Mapping, Optional
 from urllib.parse import urlsplit
 
 from curl_cffi import requests as cffi_requests
-from playwright.async_api import BrowserContext, Page, async_playwright
+from playwright.async_api import (
+    BrowserContext,
+    Page,
+    TimeoutError as PlaywrightTimeoutError,
+    async_playwright,
+)
 
 # ── опциональные импорты ──────────────────────────────────────────────────────
 try:
@@ -65,14 +70,16 @@ class Session:
         browser: Literal["chromium", "firefox", "webkit", "camoufox"] = "chromium",
         spoof: ImpersonationConfig | None = None,
         playwright_stealth: bool = True,
+        page_retry: int = 2,
     ) -> None:
         """
         Args:
             timeout: стандартный таймаут для direct и goto запросов
-            headless: запускать ли только движок, или еще и рендер? (без рендера порой ломается, особенно на малопопулярных сборках линукс, пример Mint)
-            browser: "chromium", "firefox", "webkit" - стандартные браузеры, "camoufox" - специальная сборка firefox для веб скрапинга
-            spoof: конфиг для direct запросов
-            playwright_stealth: прячет некоторые сигнатуры автоматизированного браузера (актуально для стандартных браузеров, в camoufox это есть по умолчанию)
+            headless: запускать ли только движок, или еще и рендер?
+            browser: "chromium", "firefox", "webkit" — стандартные браузеры, "camoufox" — спец. сборка firefox
+            spoof: конфиг для direct-запросов
+            playwright_stealth: прячет некоторые сигнатуры автоматизированного браузера
+            page_retry: число «мягких» повторов навигации (после первичной). Используется по умолчанию.
         """
 
         self.timeout: float = timeout
@@ -80,6 +87,7 @@ class Session:
         self.browser_name: Literal["chromium", "firefox", "webkit", "camoufox"] = browser
         self.spoof: ImpersonationConfig = spoof or ImpersonationConfig()
         self.playwright_stealth: bool = bool(playwright_stealth)
+        self.page_retry: int = int(page_retry)
 
         # camoufox несовместим со stealth
         if self.browser_name == "camoufox" and self.playwright_stealth:
@@ -116,7 +124,7 @@ class Session:
                         "Установите дополнительную зависимость, например:\n"
                         "  pip install 'human-requests[stealth]'\n"
                         "или напрямую: pip install playwright-stealth"
-                )
+                    )
                 # тут гарантировано, что Stealth установлен (см. __init__)
                 self._stealth_cm = Stealth().use_async(async_playwright())  # type: ignore[operator]
                 self._pw = await self._stealth_cm.__aenter__()
@@ -276,10 +284,12 @@ class Session:
         url: str,
         *,
         wait_until: Literal["commit", "load", "domcontentloaded", "networkidle"] = "commit",
+        retry: int | None = None,
     ) -> AsyncGenerator[Page, None]:
         """
         Открытие страницы в браузере.
         ВАЖНО: контекст создаётся на каждый вызов и закрывается при выходе.
+        Повторы НЕ пересоздают контекст/страницу — используется «мягкий reload».
         """
         await self._ensure_browser()
 
@@ -287,8 +297,36 @@ class Session:
         storage_state = self._build_storage_state_for_context()
         ctx = await self._browser.new_context(storage_state=storage_state)  # type: ignore[union-attr]
         page = await ctx.new_page()
+        timeout_ms = int(self.timeout * 1000)
+        attempts_left = self.page_retry if retry is None else int(retry)
+
+        # первая попытка
         try:
-            await page.goto(url, wait_until=wait_until, timeout=self.timeout * 1000)
+            await page.goto(url, wait_until=wait_until, timeout=timeout_ms)
+        except PlaywrightTimeoutError as last_err:
+            # мягкие повторы
+            while attempts_left > 0:
+                attempts_left -= 1
+                try:
+                    # если уже частично перешли — reload; иначе повторный goto
+                    if page.url and page.url != "about:blank":
+                        await page.reload(wait_until=wait_until, timeout=timeout_ms)
+                    else:
+                        await page.goto(url, wait_until=wait_until, timeout=timeout_ms)
+                    last_err = None  # type: ignore[assignment]
+                    break
+                except PlaywrightTimeoutError as e:
+                    last_err = e
+            if last_err is not None:
+                # синхронизируем состояние ПЕРЕД пробросом (то, что успели получить)
+                try:
+                    await self._merge_storage_state_from_context(ctx)
+                finally:
+                    await page.close()
+                    await ctx.close()
+                raise last_err
+
+        try:
             yield page
         finally:
             # обновляем внутреннее состояние из контекста
@@ -303,31 +341,65 @@ class Session:
         response: Response,
         *,
         wait_until: Literal["load", "domcontentloaded", "networkidle"] = "domcontentloaded",
+        retry: int | None = None,
     ) -> AsyncGenerator[Page, None]:
         """
         Офлайн-рендер Response: создаём временный контекст (с нашим storage_state),
         перехватываем первый запрос и отвечаем подготовленным телом.
+        Повторы НЕ пересоздают контекст/страницу — делаем «мягкий reload».
+        На каждый повтор перевешиваем route, чтобы снова отдать подготовленный ответ.
         """
         await self._ensure_browser()
 
         storage_state = self._build_storage_state_for_context()
         ctx = await self._browser.new_context(storage_state=storage_state)  # type: ignore[union-attr]
 
-        async def handler(route, _req):  # noqa: ANN001
-            await route.fulfill(
-                status=response.status_code,
-                headers=dict(response.headers),
-                body=response.body.encode("utf-8"),
-            )
+        timeout_ms = int(self.timeout * 1000)
+        attempts_left = self.page_retry if retry is None else int(retry)
 
-        await ctx.route("**/*", handler, times=1)
+        async def _attach_route_once() -> None:
+            # снимаем старые, чтобы гарантированно перевесить на повторе
+            await ctx.unroute("**/*")
+            async def handler(route, _req):  # noqa: ANN001
+                await route.fulfill(
+                    status=response.status_code,
+                    headers=dict(response.headers),
+                    body=response.body.encode("utf-8"),
+                )
+            await ctx.route("**/*", handler, times=1)
+
+        await _attach_route_once()
         page = await ctx.new_page()
+
+        # первая попытка
         try:
             await page.goto(
                 response.url.full_url,
                 wait_until=wait_until,
-                timeout=self.timeout * 1000,
+                timeout=timeout_ms,
             )
+        except PlaywrightTimeoutError as last_err:
+            while attempts_left > 0:
+                attempts_left -= 1
+                try:
+                    await _attach_route_once()
+                    if page.url and page.url != "about:blank":
+                        await page.reload(wait_until=wait_until, timeout=timeout_ms)
+                    else:
+                        await page.goto(response.url.full_url, wait_until=wait_until, timeout=timeout_ms)
+                    last_err = None  # type: ignore[assignment]
+                    break
+                except PlaywrightTimeoutError as e:
+                    last_err = e
+            if last_err is not None:
+                try:
+                    await self._merge_storage_state_from_context(ctx)
+                finally:
+                    await page.close()
+                    await ctx.close()
+                raise last_err
+
+        try:
             yield page
         finally:
             await self._merge_storage_state_from_context(ctx)
