@@ -98,3 +98,35 @@ async def api_protected(request: Request):
         },
         status_code=200,
     )
+
+
+# ----------------- NEW: headers echo + raw headers for diagnostics -----------------
+@app.get("/headers")
+async def headers_echo(request: Request):
+    """
+    Поведение:
+      - возвращает JSON["headers"] — аналог httpbin.org/headers (заголовки, как видит код в приложении)
+      - возвращает JSON["raw_headers"] — список [name, value] как пришёл в ASGI (bytes -> decoded)
+        это даёт возможность увидеть реальные имена/дублирование/регистры заголовков, которые дошли до серверного адаптера.
+    """
+    # Normalized headers (what frameworks usually surface)
+    normalized = {k: v for k, v in request.headers.items()}
+
+    # Raw ASGI headers as received by the server (list of [name, value])
+    # request.scope['headers'] is list[tuple[bytes, bytes]]
+    raw = []
+    for name_b, val_b in request.scope.get("headers", []):
+        try:
+            name = name_b.decode("latin-1")
+        except Exception:
+            name = repr(name_b)
+        try:
+            val = val_b.decode("latin-1")
+        except Exception:
+            val = repr(val_b)
+        raw.append([name, val])
+
+    return JSONResponse(
+        {"headers": normalized, "raw_headers": raw, "path": str(request.url.path)},
+        status_code=200,
+    )

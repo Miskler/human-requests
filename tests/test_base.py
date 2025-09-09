@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Iterable
 
 import pytest
 import pytest_asyncio
@@ -263,3 +264,93 @@ async def test_simple_redirect_without_cookie(session_obj: Session):
 
     # финальный ответ JSON
     json.loads(resp.body)
+
+
+DEFAULT_IGNORED_HEADERS = {
+    "connection",
+    "keep-alive",
+    "proxy-connection",
+    "transfer-encoding",
+    "te",
+}
+
+
+# --------------------- хелперы ---------------------
+def raw_list_to_dict(raw: Iterable[tuple[str, str]]) -> dict[str, str]:
+    """
+    Преобразует raw_asgi_headers (list of [name, value]) в словарь.
+    При дублировании ключей берём первое встречное значение.
+    """
+    out: Dict[str, str] = {}
+    for name, val in raw:
+        k = name.lower()
+        if k not in out:
+            out[k] = val
+    return out
+
+
+def filter_headers(headers: dict[str, str], ignored: Iterable[str]) -> dict[str, str]:
+    """
+    Отфильтровать словарь headers, удалив все ключи из ignored (case-insensitive).
+    """
+    ignored_set = {h.lower() for h in ignored}
+    return {k.lower(): v for k, v in headers.items() if k.lower() not in ignored_set}
+
+
+# --------------------- сам тест ---------------------
+@pytest.mark.asyncio
+async def test_httpbin_headers_echo_diag(session_obj: Session):
+    # direct запрос
+    resp = await session_obj.request(HttpMethod.GET, f"{HTML_BASE}/headers")
+    assert resp.status_code == 200
+
+    body = json.loads(resp.body)
+    echoed = {k.lower(): v for k, v in body["headers"].items()}
+    raw = raw_list_to_dict(body.get("raw_headers", []))
+    sent = {k.lower(): v for k, v in resp.request.headers.items()}
+
+    # фильтруем шумные транспортные / hop-by-hop заголовки
+    sent_f = filter_headers(sent, DEFAULT_IGNORED_HEADERS)
+    echoed_f = filter_headers(echoed, DEFAULT_IGNORED_HEADERS)
+    raw_f = filter_headers(raw, DEFAULT_IGNORED_HEADERS)
+
+    # 1) реальные потери: заявленные клиентом, но отсутствуют и в raw, и в echoed
+    missing_everywhere = {k for k in sent_f if (k not in raw_f and k not in echoed_f)}
+
+    # 2) заголовки, которые появились в raw, но не были в клиенте (транспорт добавил их)
+    transport_added = sorted(list(set(raw_f.keys()) - set(sent_f.keys())))
+
+    # 3) заголовки, которые видны у клиента, но не попали в нормализованный echoed (фильтрация фреймворка)
+    client_not_echoed = sorted(list(set(sent_f.keys()) - set(echoed_f.keys())))
+
+    # 4) несовпадения значений между отправленным и эхо (только для тех, что видны и там и там)
+    value_mismatches = {
+        k: {"sent": sent_f[k], "echoed": echoed_f.get(k)}
+        for k in (set(sent_f.keys()) & set(echoed_f.keys()))
+        if sent_f[k] != echoed_f[k]
+    }
+
+    diag = {
+        "sent_client_headers_filtered": sent_f,
+        "echoed_server_headers_filtered": echoed_f,
+        "raw_asgi_headers_filtered": sorted(list(raw_f.items())),
+        "missing_everywhere": sorted(list(missing_everywhere)),
+        "transport_added": transport_added,
+        "client_not_echoed": client_not_echoed,
+        "value_mismatches": value_mismatches,
+    }
+
+    # Fail only if headers, которые явно заявил клиент, реально пропали на проводе/прокси
+    if missing_everywhere:
+        pytest.fail(
+            "Headers lost on the wire (after filtering):\n"
+            + json.dumps(diag, indent=2, ensure_ascii=False)
+        )
+
+    # Если есть несовпадения значений — тоже считаем это проблемой теста (чёткая инварианта).
+    if value_mismatches:
+        pytest.fail("Header value mismatches:\n" + json.dumps(diag, indent=2, ensure_ascii=False))
+
+    # Иначе — считаем тест успешным, но выводим диагностику в лог (полезно для CI)
+    print("Headers diagnostic:\n" + json.dumps(diag, indent=2, ensure_ascii=False))
+    assert True
