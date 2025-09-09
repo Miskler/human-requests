@@ -1,5 +1,5 @@
-Sannysoft Report
-================
+Browser Anti-Bot Report
+=======================
 
 Legend:
 
