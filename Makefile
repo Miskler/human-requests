@@ -25,6 +25,12 @@ install-dev:
 test:
 	pytest
 
+ci-test:
+	pytest --cov-report=xml \
+            --cov-report=html \
+            --cov-report=term \
+            --junitxml=junit.xml
+
 test-quick:
 	pytest --tb=short
 

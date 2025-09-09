@@ -9,6 +9,9 @@ on:
       python-versions:
         type: string
         default: '["3.12"]'
+      headless:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       upload-coverage:
@@ -19,6 +22,10 @@ on:
         description: "JSON-список версий Python"
         type: string
         default: '["3.12"]'
+      headless:
+        description: "Запускать браузер headless (true/false)"
+        type: boolean
+        default: false
   pull_request:
     branches:
       - "**"
@@ -61,12 +68,12 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest \
-            --cov=human_requests \
-            --cov-report=xml \
-            --cov-report=html \
-            --cov-report=term \
-            --junitxml=junit.xml
+          # “виртуальный” дисплей с нормальной глубиной цвета
+          if [ "${{ github.event.inputs.headless }}" = "true" || "${{ inputs.headless }}" = "true" ]; then
+            make ci-test
+          else
+            xvfb-run -s "-screen 0 1920x1080x24" make ci-test
+          fi
 
       - name: Upload raw reports
         if: always()

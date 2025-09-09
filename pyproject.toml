@@ -32,9 +32,9 @@ dependencies = [
 
 [project.optional-dependencies]
 playwright         = ["playwright"]
-stealth-playwright = ["playwright,playwright-stealth"] # Тянет playwright зависимостью
+stealth-playwright = ["playwright", "playwright-stealth"] # Тянет playwright зависимостью
 camoufox           = ["camoufox[geoip]"]
-all                = ["playwright,playwright-stealth,camoufox[geoip]"]
+all                = ["playwright", "playwright-stealth", "camoufox[geoip]"]
 
 [project.urls]
 Homepage = "https://github.com/Miskler/human-requests"
