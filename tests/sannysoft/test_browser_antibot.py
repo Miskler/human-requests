@@ -5,7 +5,7 @@ import os
 
 import pytest
 
-from network_manager import ImpersonationConfig, Session
+from human_requests import ImpersonationConfig, Session
 from tests.sannysoft.sannysoft_parser import parse_sannysoft_bot
 from tests.sannysoft.tool import (
     html_via_goto,

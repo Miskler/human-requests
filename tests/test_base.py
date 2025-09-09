@@ -6,7 +6,7 @@ import os
 import pytest
 import pytest_asyncio
 
-from network_manager import URL, HttpMethod, Session
+from human_requests import URL, HttpMethod, Session
 
 # ---------------------------------------------------------------------------
 # Базовые адреса берём из ENV, чтобы не хардкодить инфраструктуру

@@ -5,7 +5,7 @@ import json
 import pytest
 import pytest_asyncio
 
-from network_manager import HttpMethod, ImpersonationConfig, Session
+from human_requests import HttpMethod, ImpersonationConfig, Session
 
 HTTPBIN = "https://httpbin.org/headers"
 

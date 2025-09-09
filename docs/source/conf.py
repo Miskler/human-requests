@@ -18,7 +18,7 @@ sys.path.insert(0, str(EXT_DIR))                      # подключаем п�
 project   = "network_manager"
 author    = "Miskler"
 copyright = "2025, Miskler"
-from network_manager import __version__
+from human_requests import __version__
 release   = __version__
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -1,9 +1,9 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel", "rich"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "network-manager"
+name = "human-requests"
 dynamic = ["version"]
 description = "Своя замена hrequests"
 authors = [
@@ -13,8 +13,6 @@ readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.10"
 classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
@@ -23,7 +21,8 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
-    "Topic :: Utilities",
+    "Topic :: Internet",
+    "Topic :: Utilities"
 ]
 keywords = []
 dependencies = [
@@ -53,19 +52,19 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Miskler/network_manager"
-Repository = "https://github.com/Miskler/network_manager"
-Documentation = "https://miskler.github.io/network_manager/basic/quick_start/index.html"
-Issues = "https://github.com/Miskler/network_manager/issues"
+Homepage = "https://github.com/Miskler/human-requests"
+Repository = "https://github.com/Miskler/human-requests"
+Documentation = "https://miskler.github.io/human-requests/basic/quick_start/index.html"
+Issues = "https://github.com/Miskler/human-requests/issues"
 
 [tool.setuptools.dynamic]
-version = {attr = "network_manager.__version__"}
+version = {attr = "human_requests.__version__"}
 
 [tool.setuptools.packages.find]
-include = ["network_manager*"]
+include = ["human_requests*"]
 
 [tool.setuptools.package-data]
-"network_manager" = ["py.typed"]
+"human_requests" = ["py.typed"]
 
 
 [tool.black]
@@ -99,4 +98,4 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "--cov=network_manager --cov-report=term-missing --cov-report=html"
+addopts = "--cov=human_requests --cov-report=term-missing --cov-report=html"
