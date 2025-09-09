@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "human-requests"
 dynamic = ["version"]
-description = "Своя замена hrequests"
+description = "Playwright+curl_cffi traffic orchestrator"
 authors = [
     {name = "Miskler", email = "mail@miskler.ru"}
 ]
@@ -34,22 +34,7 @@ dependencies = [
 playwright         = ["playwright"]
 stealth-playwright = ["playwright,playwright-stealth"] # Тянет playwright зависимостью
 camoufox           = ["camoufox[geoip]"]
-dev = [
-    "selectolax",
-
-    "pytest",
-    "pytest-cov",
-    "black",
-    "isort",
-    "mypy",
-    "flake8",
-
-    "sphinx",
-    "sphinx-autoapi",
-    "furo",
-    "docutils",
-    "types-docutils"
-]
+all                = ["playwright,playwright-stealth,camoufox[geoip]"]
 
 [project.urls]
 Homepage = "https://github.com/Miskler/human-requests"

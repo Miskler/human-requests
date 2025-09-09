@@ -282,7 +282,7 @@ class Session:
             local_storage=self.local_storage,
             cookie_manager=self.cookies,
         )
-        ctx = await self._browser.new_context(storage_state=storage_state)  # type: ignore[union-attr]
+        ctx = await self._browser.new_context(storage_state=storage_state)
         page = await ctx.new_page()
         timeout_ms = int(self.timeout * 1000)
         attempts_left = self.page_retry if retry is None else int(retry)
@@ -326,7 +326,7 @@ class Session:
             local_storage=self.local_storage,
             cookie_manager=self.cookies,
         )
-        ctx = await self._browser.new_context(storage_state=storage_state)  # type: ignore[union-attr]
+        ctx = await self._browser.new_context(storage_state=storage_state)
 
         timeout_ms = int(self.timeout * 1000)
         attempts_left = self.page_retry if retry is None else int(retry)

@@ -19,7 +19,8 @@ install:
 	pip install .
 
 install-dev:
-	pip install -e .[dev]
+	pip install -r requirements.txt
+	pip install -e .[all]
 
 test:
 	pytest
