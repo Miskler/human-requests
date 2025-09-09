@@ -34,12 +34,12 @@ from playwright.async_api import (
 try:
     from playwright_stealth import Stealth
 except Exception:
-    Stealth = None  # type: ignore[assignment]
+    Stealth = None
 
 try:
     from camoufox.async_api import AsyncCamoufox
 except Exception:
-    AsyncCamoufox = None  # type: ignore[assignment]
+    AsyncCamoufox = None
 # ──────────────────────────────────────────────────────────────────────────────
 
 from .abstraction.cookies import CookieManager
@@ -134,7 +134,7 @@ class Session:
                         "или напрямую: pip install playwright-stealth"
                     )
                 # тут гарантировано, что Stealth установлен (см. __init__)
-                self._stealth_cm = Stealth().use_async(async_playwright())  # type: ignore[operator]
+                self._stealth_cm = Stealth().use_async(async_playwright())
                 self._pw = await self._stealth_cm.__aenter__()
             else:
                 self._pw = await async_playwright().start()
@@ -215,7 +215,7 @@ class Session:
         # первая попытка + мягкие повторы на Timeout
         try:
             r, duration = await _do_request()
-        except cffi_requests.exceptions.Timeout as e:  # type: ignore[attr-defined]
+        except cffi_requests.exceptions.Timeout as e:
             last_err = e
             while attempts_left > 0:
                 attempts_left -= 1
@@ -223,7 +223,7 @@ class Session:
                     r, duration = await _do_request()
                     last_err = None
                     break
-                except cffi_requests.exceptions.Timeout as e2:  # type: ignore[attr-defined]
+                except cffi_requests.exceptions.Timeout as e2:
                     last_err = e2
             if last_err is not None:
                 raise last_err
@@ -253,7 +253,7 @@ class Session:
         resp_model = Response(
             request=req_model,
             url=URL(full_url=str(r.url)),
-            headers=resp_headers,  # type: ignore[arg-type]
+            headers=resp_headers,
             cookies=resp_cookies,
             body=body_text,
             status_code=r.status_code,
@@ -396,5 +396,5 @@ class Session:
     async def __aenter__(self) -> "Session":
         return self
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:  # noqa: ANN001
+    async def __aexit__(self, exc_type, exc, tb) -> None:
         await self.close()

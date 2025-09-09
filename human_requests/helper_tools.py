@@ -14,6 +14,8 @@ from playwright.async_api import (
 )
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
+from .abstraction.cookies import CookieManager
+
 # Зависящие типы простые и стабильные — импортируем прямо.
 # CookieManager нужен только как протокол поведения (to_playwright/add_from_playwright).
 
@@ -21,7 +23,7 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 def build_storage_state_for_context(
     *,
     local_storage: dict[str, dict[str, str]],
-    cookie_manager,
+    cookie_manager: CookieManager,
 ) -> dict:
     """
     Собирает единый storage_state для new_context:
@@ -43,7 +45,7 @@ def build_storage_state_for_context(
 
 
 async def merge_storage_state_from_context(
-    ctx: BrowserContext, *, cookie_manager
+    ctx: BrowserContext, *, cookie_manager: CookieManager
 ) -> dict[str, dict[str, str]]:
     """
     Читает storage_state из контекста и синхронизирует внутреннее состояние:

@@ -9,13 +9,14 @@ from __future__ import annotations
 
 from http.cookies import SimpleCookie
 from typing import Any, Iterable, Mapping, Tuple
+from urllib.parse import SplitResult
 
 from ..abstraction.cookies import Cookie
 
 # ───────────────────── RFC 6265 helpers ──────────────────────────────
 
 
-def cookie_matches(url_parts, cookie: Cookie) -> bool:  # noqa: ANN001
+def cookie_matches(url_parts: SplitResult, cookie: Cookie) -> bool:  # noqa: ANN001
     def domain_match(host: str, cookie_domain: str | None) -> bool:
         if not cookie_domain:
             return True
@@ -52,7 +53,7 @@ def guess_encoding(headers: Mapping[str, str]) -> str:
 
 
 def compose_cookie_header(
-    url_parts,
+    url_parts: SplitResult,
     current_headers: Mapping[str, str],
     jar: Iterable[Cookie],
 ) -> Tuple[str, list[Cookie]]:

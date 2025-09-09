@@ -80,7 +80,7 @@ class Cookie:
             "expires": int(self.expires or 0) or None,
             "httpOnly": bool(self.http_only or False),
             "secure": bool(self.secure or False),
-            "sameSite": self.same_site or None,
+            "sameSite": self.same_site,
         }
 
     @staticmethod
@@ -103,13 +103,13 @@ class CookieManager:
     storage: list[Cookie] = field(default_factory=list)
 
     # ────── dunder helpers ──────
-    def __iter__(self):
+    def __iter__(self) -> Iterable[Cookie]:
         return iter(self.storage)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.storage)
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return bool(self.storage)
 
     # ────── CRUD ──────

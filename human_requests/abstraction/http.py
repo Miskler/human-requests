@@ -46,7 +46,7 @@ class URL:
     params: dict[str, list[str]] = field(default_factory=dict)
     """A dictionary of query parameters."""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         parsed_url = urlparse(self.full_url)
 
         object.__setattr__(self, "base_url", parsed_url._replace(query="").geturl())
