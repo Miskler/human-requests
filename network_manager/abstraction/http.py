@@ -1,7 +1,7 @@
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
-from dataclasses import dataclass, field
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
 
 class HttpMethod(Enum):
@@ -21,6 +21,7 @@ class HttpMethod(Enum):
     """Retrieves metadata from a server. It only reads the headers and does not return the response body."""
     OPTIONS = "OPTIONS"
     """Provides information about the HTTP methods supported by a server. It can be used for Cross-Origin Resource Sharing (CORS) request."""
+
 
 @dataclass(frozen=True)
 class URL:
@@ -47,11 +48,11 @@ class URL:
 
     def __post_init__(self):
         parsed_url = urlparse(self.full_url)
-        
+
         object.__setattr__(self, "base_url", parsed_url._replace(query="").geturl())
         object.__setattr__(self, "secure", parsed_url.scheme in ["https", "wss"])
         object.__setattr__(self, "protocol", parsed_url.scheme)
-        
+
         object.__setattr__(self, "path", parsed_url.path)
 
         full_domen = parsed_url.netloc.split(":")
@@ -59,5 +60,5 @@ class URL:
         object.__setattr__(self, "domain", full_domen[0])
         if len(full_domen) > 1:
             object.__setattr__(self, "port", int(full_domen[1]))
-        
+
         object.__setattr__(self, "params", parse_qs(parsed_url.query))

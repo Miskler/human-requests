@@ -4,6 +4,7 @@ HTTP-helpers (cookie logic, charset, Playwright ↔ Curl adapters).
 Никаких зависимостей от curl_cffi или Playwright – только stdlib +
 наша модель Cookie.  Все функции чистые: удобно тестировать отдельно.
 """
+
 from __future__ import annotations
 
 from http.cookies import SimpleCookie
@@ -21,7 +22,7 @@ def cookie_matches(url_parts, cookie: Cookie) -> bool:  # noqa: ANN001
         host = host.split(":", 1)[0].lower()
         cd = cookie_domain.lstrip(".").lower()
         return host == cd or host.endswith("." + cd)
-    
+
     def path_match(req_path: str, cookie_path: str | None) -> bool:
         if not cookie_path:
             return True
@@ -29,7 +30,6 @@ def cookie_matches(url_parts, cookie: Cookie) -> bool:  # noqa: ANN001
             req_path += "/"
         cp = cookie_path if cookie_path.endswith("/") else cookie_path + "/"
         return req_path.startswith(cp)
-
 
     return (
         domain_match(url_parts.hostname or "", cookie.domain)
@@ -44,9 +44,7 @@ def cookie_matches(url_parts, cookie: Cookie) -> bool:  # noqa: ANN001
 def guess_encoding(headers: Mapping[str, str]) -> str:
     ctype = headers.get("content-type", "")
     if "charset=" in ctype:
-        return (
-            ctype.split("charset=", 1)[1].split(";", 1)[0].strip(" \"'") or "utf-8"
-        )
+        return ctype.split("charset=", 1)[1].split(";", 1)[0].strip(" \"'") or "utf-8"
     return "utf-8"
 
 
@@ -91,7 +89,8 @@ def collect_set_cookie_headers(headers: Mapping[str, Any]) -> list[str]:
 def parse_set_cookie(raw_headers: list[str], default_domain: str) -> list[Cookie]:
     out: list[Cookie] = []
     for raw in raw_headers:
-        jar = SimpleCookie(); jar.load(raw)
+        jar = SimpleCookie()
+        jar.load(raw)
         for m in jar.values():
             out.append(
                 Cookie(

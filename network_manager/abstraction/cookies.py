@@ -1,6 +1,6 @@
-from datetime import datetime
-from typing import Literal, Iterable
 from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Iterable, Literal
 from urllib.parse import urlsplit
 
 
@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 class Cookie:
     """
     A dataclass containing the information about a cookie.
-    
+
     Please, see the MDN Web Docs for the full documentation:
     https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie
     """
@@ -17,47 +17,47 @@ class Cookie:
     """
     This is the name of the cookie that will be used to identify the cookie in the Cookie header.
     """
-    
+
     value: str
     """
     This is the value that will be sent with the Cookie header.
     """
-    
+
     path: str = "/"
     """
     This is the path from which the cookie will be readable.
     """
-    
+
     domain: str = ""
     """
     This is the domain from which the cookie will be readable.
     """
-    
+
     expires: int = 0
     """
     This is the date when the cookie will be deleted. Coded in Unix timestamp.
     """
-    
+
     max_age: int = 0
     """
     This is the maximum age of the cookie in seconds.
     """
-    
+
     same_site: Literal["Lax", "Strict", "None"] = "Lax"
     """
     This is the policy that determines whether the cookie will be sent with requests that are "same-site".
     """
-    
+
     secure: bool = False
     """
     This is whether the cookie will be sent over a secure connection.
     """
-    
+
     http_only: bool = False
     """
     This is whether the cookie will be accessible to JavaScript.
     """
-    
+
     def expires_as_datetime(self) -> datetime:
         """
         This is the same as the `expires` property but as a datetime object.
@@ -82,7 +82,7 @@ class Cookie:
             "secure": bool(self.secure or False),
             "sameSite": self.same_site or None,
         }
-    
+
     @staticmethod
     def from_playwright_like_dict(dict: dict[str, str | int | bool | None]) -> "Cookie":
         return Cookie(
@@ -139,6 +139,7 @@ class CookieManager:
 
     def add(self, cookie: Cookie | Iterable[Cookie]) -> None:
         """Добавить куку/куки."""
+
         def _add_one(c: Cookie) -> None:
             key = (c.domain, c.path, c.name)
             for i, old in enumerate(self.storage):
@@ -147,20 +148,22 @@ class CookieManager:
                     break
             else:
                 self.storage.append(c)
-        
+
         if isinstance(cookie, Iterable) and not isinstance(cookie, Cookie):
             for c in cookie:
                 _add_one(c)
         else:
             _add_one(cookie)
 
-    def delete(self, name: str, domain: str | None = None, path: str | None = None) -> Cookie | None:
+    def delete(
+        self, name: str, domain: str | None = None, path: str | None = None
+    ) -> Cookie | None:
         """Удалить куку по имени, домену и пути."""
         for i, c in enumerate(self.storage):
-            if c.name == name and (
-                domain is None or c.domain == domain
-            ) and (
-                path is None or c.path == path
+            if (
+                c.name == name
+                and (domain is None or c.domain == domain)
+                and (path is None or c.path == path)
             ):
                 return self.storage.pop(i)
         return None

@@ -18,13 +18,15 @@ if str(REPO_ROOT) not in sys.path:
 # --------------------------------------------------------------------
 
 from tqdm import tqdm  # прогрессбар
-from network_manager import Session, ImpersonationConfig
+
+from network_manager import ImpersonationConfig, Session
 from tests.sannysoft.sannysoft_parser import parse_sannysoft_bot
 from tests.sannysoft.tool import (
+    collect_failed_props,
     html_via_goto,
     html_via_render,
-    collect_failed_props,
 )
+
 
 # ========================== CLI/ENV defaults ==========================
 def env_list(name: str, default_csv: str) -> list[str]:
@@ -32,16 +34,17 @@ def env_list(name: str, default_csv: str) -> list[str]:
     seq = val.split(",") if val else default_csv.split(",")
     return [x.strip() for x in seq if x.strip()]
 
-SANNY_URL   = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")
-BROWSERS    = env_list("BROWSERS", "firefox,chromium,webkit,camoufox")
-STEALTH_OPS = env_list("STEALTH_OPS", "stealth,base")
-MODES       = env_list("MODES", "goto,render")
-HEADLESS    = os.getenv("HEADLESS", "false").lower() in {"1", "true", "yes", "y"}
-RUNS        = int(os.getenv("RUNS", "10"))
-PROGRESS    = os.getenv("PROGRESS", "true").lower() in {"1", "true", "yes", "y"}
 
-OUT_JSON    = os.getenv("OUT_JSON", str(Path(__file__).with_name("browser_antibot_sannysoft.json")))
-OUT_PATH    = Path(OUT_JSON)
+SANNY_URL = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")
+BROWSERS = env_list("BROWSERS", "firefox,chromium,webkit,camoufox")
+STEALTH_OPS = env_list("STEALTH_OPS", "stealth,base")
+MODES = env_list("MODES", "goto,render")
+HEADLESS = os.getenv("HEADLESS", "false").lower() in {"1", "true", "yes", "y"}
+RUNS = int(os.getenv("RUNS", "10"))
+PROGRESS = os.getenv("PROGRESS", "true").lower() in {"1", "true", "yes", "y"}
+
+OUT_JSON = os.getenv("OUT_JSON", str(Path(__file__).with_name("browser_antibot_sannysoft.json")))
+OUT_PATH = Path(OUT_JSON)
 OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
@@ -66,7 +69,11 @@ async def _run_once(browser: str, stealth: str, mode: str) -> tuple[set[str], fl
 
     t0 = time.perf_counter()
     try:
-        html = await (html_via_goto(session, SANNY_URL) if mode == "goto" else html_via_render(session, SANNY_URL))
+        html = await (
+            html_via_goto(session, SANNY_URL)
+            if mode == "goto"
+            else html_via_render(session, SANNY_URL)
+        )
         parsed = parse_sannysoft_bot(html)
         failed = collect_failed_props(parsed)
         elapsed = time.perf_counter() - t0
@@ -96,7 +103,11 @@ async def gather_stats(
                 continue
             total_attempts += runs * len(modes)
 
-    bar = tqdm(total=total_attempts, desc="Sannysoft stats", dynamic_ncols=True, unit="step") if use_progress else None
+    bar = (
+        tqdm(total=total_attempts, desc="Sannysoft stats", dynamic_ncols=True, unit="step")
+        if use_progress
+        else None
+    )
 
     for browser in browsers:
         total_counts = {"base": defaultdict(int), "stealth": defaultdict(int)}
@@ -128,9 +139,11 @@ async def gather_stats(
             await asyncio.sleep(0.2)
 
         # классификация
-        classified = {"base": {"stable": [], "unstable": []},
-                      "stealth": {"stable": [], "unstable": []},
-                      "all": {"stable": [], "unstable": []}}
+        classified = {
+            "base": {"stable": [], "unstable": []},
+            "stealth": {"stable": [], "unstable": []},
+            "all": {"stable": [], "unstable": []},
+        }
 
         for stealth in ("base", "stealth"):
             att = attempts[stealth]
@@ -167,21 +180,47 @@ async def gather_stats(
             avg_t = min_t = max_t = 0.0
 
         result[browser] = {
-            "all":     {"stable": classified["all"]["stable"],     "unstable": classified["all"]["unstable"]},
-            "base":    {"stable": classified["base"]["stable"],    "unstable": classified["base"]["unstable"]},
-            "stealth": {"stable": classified["stealth"]["stable"], "unstable": classified["stealth"]["unstable"]},
+            "all": {
+                "stable": classified["all"]["stable"],
+                "unstable": classified["all"]["unstable"],
+            },
+            "base": {
+                "stable": classified["base"]["stable"],
+                "unstable": classified["base"]["unstable"],
+            },
+            "stealth": {
+                "stable": classified["stealth"]["stable"],
+                "unstable": classified["stealth"]["unstable"],
+            },
             "fail_counts": {
                 "base": {
                     "attempts": attempts["base"],
-                    "total": dict(sorted(total_counts["base"].items(), key=lambda kv: (-kv[1], kv[0]))),
-                    "modes": {m: dict(sorted(per_mode_counts["base"][m].items(), key=lambda kv: (-kv[1], kv[0])))
-                              for m in modes},
+                    "total": dict(
+                        sorted(total_counts["base"].items(), key=lambda kv: (-kv[1], kv[0]))
+                    ),
+                    "modes": {
+                        m: dict(
+                            sorted(
+                                per_mode_counts["base"][m].items(), key=lambda kv: (-kv[1], kv[0])
+                            )
+                        )
+                        for m in modes
+                    },
                 },
                 "stealth": {
                     "attempts": attempts["stealth"],
-                    "total": dict(sorted(total_counts["stealth"].items(), key=lambda kv: (-kv[1], kv[0]))),
-                    "modes": {m: dict(sorted(per_mode_counts["stealth"][m].items(), key=lambda kv: (-kv[1], kv[0])))
-                              for m in modes},
+                    "total": dict(
+                        sorted(total_counts["stealth"].items(), key=lambda kv: (-kv[1], kv[0]))
+                    ),
+                    "modes": {
+                        m: dict(
+                            sorted(
+                                per_mode_counts["stealth"][m].items(),
+                                key=lambda kv: (-kv[1], kv[0]),
+                            )
+                        )
+                        for m in modes
+                    },
                 },
             },
             "timings": {
@@ -198,14 +237,27 @@ async def gather_stats(
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Собрать стабильные/нестабильные фейлы sannysoft (формат ANTI_ERROR).")
-    ap.add_argument("--runs", type=int, default=RUNS, help="Сколько раз прогонять матрицу (по умолчанию 10).")
-    ap.add_argument("--browsers", type=str, default=",".join(BROWSERS),
-                    help="Список браузеров через запятую (firefox,chromium,webkit,camoufox).")
-    ap.add_argument("--stealth", type=str, default=",".join(STEALTH_OPS),
-                    help="stealth-срезы через запятую (stealth,base).")
-    ap.add_argument("--modes", type=str, default=",".join(MODES),
-                    help="Режимы через запятую (goto,render).")
+    ap = argparse.ArgumentParser(
+        description="Собрать стабильные/нестабильные фейлы sannysoft (формат ANTI_ERROR)."
+    )
+    ap.add_argument(
+        "--runs", type=int, default=RUNS, help="Сколько раз прогонять матрицу (по умолчанию 10)."
+    )
+    ap.add_argument(
+        "--browsers",
+        type=str,
+        default=",".join(BROWSERS),
+        help="Список браузеров через запятую (firefox,chromium,webkit,camoufox).",
+    )
+    ap.add_argument(
+        "--stealth",
+        type=str,
+        default=",".join(STEALTH_OPS),
+        help="stealth-срезы через запятую (stealth,base).",
+    )
+    ap.add_argument(
+        "--modes", type=str, default=",".join(MODES), help="Режимы через запятую (goto,render)."
+    )
     ap.add_argument("--no-progress", action="store_true", help="Отключить прогрессбар.")
     args = ap.parse_args()
 
@@ -213,13 +265,15 @@ def main() -> None:
     stealth_ops = [x for x in args.stealth.split(",") if x]
     modes = [x for x in args.modes.split(",") if x]
 
-    data = asyncio.run(gather_stats(
-        runs=args.runs,
-        browsers=browsers,
-        stealth_ops=stealth_ops,
-        modes=modes,
-        use_progress=PROGRESS and (not args.no_progress),
-    ))
+    data = asyncio.run(
+        gather_stats(
+            runs=args.runs,
+            browsers=browsers,
+            stealth_ops=stealth_ops,
+            modes=modes,
+            use_progress=PROGRESS and (not args.no_progress),
+        )
+    )
 
     with OUT_PATH.open("w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

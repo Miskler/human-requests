@@ -2,8 +2,9 @@
 Техническая утилита-парсер https://bot.sannysoft.com/ для анализа браузера
 """
 
-from selectolax.parser import HTMLParser
 import re
+
+from selectolax.parser import HTMLParser
 
 
 def _clean_key(text: str) -> str:
@@ -30,7 +31,7 @@ def parse_sannysoft_bot(html: str) -> dict:
 
     # ---------- BASE (первая таблица) ----------
     base = {}
-    for row in tables[0].css("tr")[1:]:              # пропускаем заголовок
+    for row in tables[0].css("tr")[1:]:  # пропускаем заголовок
         cells = row.css("td")
         if len(cells) < 2:
             continue

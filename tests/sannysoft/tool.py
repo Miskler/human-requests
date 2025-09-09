@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 # Параметры ожиданий/ретраев (можно переопределять из вызывающего кода)
@@ -39,14 +40,19 @@ async def _load_with_retry(load_fn, *, max_attempts: int, timeout_ms: int) -> st
 
 
 # ------------------------------ HTML loaders ---------------------------------
-async def html_via_goto(session, url: str,
-                        *, timeout_ms: int = DEFAULT_TIMEOUT_MS,
-                        max_attempts: int = DEFAULT_MAX_ATTEMPTS) -> str:
+async def html_via_goto(
+    session,
+    url: str,
+    *,
+    timeout_ms: int = DEFAULT_TIMEOUT_MS,
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+) -> str:
     """
     Открыть страницу обычной навигацией и вернуть HTML.
     С ретраями: при таймауте селектора — перезагрузка страницы.
     """
     async with session.goto_page(url, wait_until="load") as p:
+
         async def _do(tmo: int) -> str:
             try:
                 # можно добавить networkidle перед селектором, если нужно:
@@ -57,29 +63,38 @@ async def html_via_goto(session, url: str,
                 await p.reload(wait_until="load")
                 await wait_fp_ready(p, timeout_ms=tmo)
                 return await p.content()
+
         return await _load_with_retry(_do, max_attempts=max_attempts, timeout_ms=timeout_ms)
 
 
-async def html_via_render(session, url: str,
-                          *, timeout_ms: int = DEFAULT_TIMEOUT_MS,
-                          max_attempts: int = DEFAULT_MAX_ATTEMPTS) -> str:
+async def html_via_render(
+    session,
+    url: str,
+    *,
+    timeout_ms: int = DEFAULT_TIMEOUT_MS,
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+) -> str:
     """
     Открыть страницу через .request(...).render() и вернуть HTML.
     С ретраями: при таймауте селектора — новый render-контекст.
     """
     resp = await session.request("GET", url)
     async with resp.render() as p:
+
         async def _do(tmo: int) -> str:
             try:
                 await wait_fp_ready(p, timeout_ms=tmo)
                 return await p.content()
             except PlaywrightTimeoutError:
+
                 async def reopen() -> str:
                     resp2 = await session.request("GET", url)
                     async with resp2.render() as p2:
                         await wait_fp_ready(p2, timeout_ms=tmo)
                         return await p2.content()
+
                 return await reopen()
+
         return await _load_with_retry(_do, max_attempts=max_attempts, timeout_ms=timeout_ms)
 
 
@@ -127,8 +142,14 @@ def select_unexpected_failures(
             if not isinstance(v, dict):
                 continue
 
-            declared_stable = k in anti_error[browser][stealth]["stable"] or k in anti_error[browser]["all"]["stable"]
-            declared_unst   = k in anti_error[browser][stealth]["unstable"] or k in anti_error[browser]["all"]["unstable"]
+            declared_stable = (
+                k in anti_error[browser][stealth]["stable"]
+                or k in anti_error[browser]["all"]["stable"]
+            )
+            declared_unst = (
+                k in anti_error[browser][stealth]["unstable"]
+                or k in anti_error[browser]["all"]["unstable"]
+            )
 
             if "passed" in v:
                 val = v.get("passed")

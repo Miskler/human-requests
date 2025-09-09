@@ -11,8 +11,8 @@ from typing import Awaitable, Callable, Literal, Optional
 from playwright.async_api import (
     BrowserContext,
     Page,
-    TimeoutError as PlaywrightTimeoutError,
 )
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 # Зависящие типы простые и стабильные — импортируем прямо.
 # CookieManager нужен только как протокол поведения (to_playwright/add_from_playwright).

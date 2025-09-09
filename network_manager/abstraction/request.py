@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 from typing import Optional
-from .http import HttpMethod, URL
+
 from .cookies import Cookie
+from .http import URL, HttpMethod
+
 
 @dataclass(frozen=True)
 class Request:
@@ -15,9 +17,9 @@ class Request:
 
     headers: dict
     """The headers of the request."""
-    
+
     body: Optional[str | list | dict]
     """The body of the request."""
-    
+
     cookies: list[Cookie]
     """The cookies passed in the request."""

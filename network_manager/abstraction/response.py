@@ -1,9 +1,11 @@
-from typing import Callable, Optional, Literal
 from dataclasses import dataclass
-from .request import Request
+from typing import Callable, Literal, Optional
+
+from playwright.async_api import Page
+
 from .cookies import Cookie
 from .http import URL
-from playwright.async_api import Page
+from .request import Request
 
 
 @dataclass(frozen=True)
@@ -33,12 +35,14 @@ class Response:
 
     _render_callable: Optional[Callable] = None
 
-    def render(self,
-               wait_until: Literal["commit", "load", "domcontentloaded", "networkidle"] = "commit",
-               retry: int = 2) -> Page:
+    def render(
+        self,
+        wait_until: Literal["commit", "load", "domcontentloaded", "networkidle"] = "commit",
+        retry: int = 2,
+    ) -> Page:
         """Renders the response content in the current browser.
         It will look like we requested it through the browser from the beginning.
-        
+
         Recommended to use in cases when the server returns a JS challenge instead of a response."""
 
         if self._render_callable:

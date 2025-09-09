@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-import os
-import pytest
 import json
+import os
 
+import pytest
+
+from network_manager import ImpersonationConfig, Session
 from tests.sannysoft.sannysoft_parser import parse_sannysoft_bot
 from tests.sannysoft.tool import (
     html_via_goto,
@@ -11,13 +13,11 @@ from tests.sannysoft.tool import (
     select_unexpected_failures,
 )
 
-from network_manager import Session, ImpersonationConfig
-
 # ---------------------------------------------------------  settings
-SANNY_URL   = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")
-BROWSERS    = ("firefox", "chromium", "webkit", "camoufox")
+SANNY_URL = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")
+BROWSERS = ("firefox", "chromium", "webkit", "camoufox")
 STEALTH_OPS = ("stealth", "base")  # включён playwright-stealth или нет
-HEADLESS    = False
+HEADLESS = False
 
 # Структура:
 #   [browser][type][stable|unstable]
@@ -53,7 +53,11 @@ async def test_antibot_matrix(browser: str, stealth: str, mode: str):
 
     # --- получаем HTML (устойчиво к «скрипт не стартовал») ---
     try:
-        html = await (html_via_goto(session, SANNY_URL) if mode == "goto" else html_via_render(session, SANNY_URL))
+        html = await (
+            html_via_goto(session, SANNY_URL)
+            if mode == "goto"
+            else html_via_render(session, SANNY_URL)
+        )
     finally:
         await session.close()
 

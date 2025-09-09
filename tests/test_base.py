@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+
 import pytest
 import pytest_asyncio
 
-from network_manager import Session, HttpMethod, URL
+from network_manager import URL, HttpMethod, Session
 
 # ---------------------------------------------------------------------------
 # Базовые адреса берём из ENV, чтобы не хардкодить инфраструктуру
@@ -18,6 +19,7 @@ API_BASE = os.getenv("TEST_API_BASE", f"{HTML_BASE}/api")
 # ---------------------------------------------------------------------------
 COOKIE_BASE = "base_visited"
 COOKIE_CHALLENGE = "js_challenge"
+
 
 # ---------------------------------------------------------------------------
 # Async-фикстура: под каждый тест — новый AsyncSession

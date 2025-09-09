@@ -1,6 +1,6 @@
-from .session import Session
+from .abstraction.http import URL, HttpMethod
 from .impersonation import ImpersonationConfig, Policy
-from .abstraction.http import HttpMethod, URL
+from .session import Session
 
 __all__ = ["Session", "ImpersonationConfig", "Policy", "HttpMethod", "URL"]
 
