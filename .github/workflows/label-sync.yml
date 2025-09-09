@@ -1,0 +1,18 @@
+# .github/workflows/label-sync.yml
+name: Sync labels
+on:
+  workflow_dispatch:
+permissions:
+  issues: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: .github/labels.yml}
+
+      - uses: EndBug/label-sync@v2        # keeps repo labels == labels.yml
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: .github/labels.yml
+          delete-other-labels: false      # safety-net

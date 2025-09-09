@@ -1,0 +1,27 @@
+# .github/workflows/auto-area-labels.yml
+name: Area labels from Bug-report form
+on:
+  issues: {types: [opened, edited]}
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  label_component:
+    runs-on: ubuntu-latest
+    permissions: { issues: write, contents: read }
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: parse
+        uses: stefanbuck/github-issue-parser@v3
+        with:
+          template-path: .github/ISSUE_TEMPLATE/bug_report.yml
+
+      - name: Set labels from 'area'
+        uses: redhat-plumbers-in-action/advanced-issue-labeler@v3
+        with:
+          issue-form: ${{ steps.parse.outputs.jsonString }}
+          section: area
+          token: ${{ secrets.GITHUB_TOKEN }}

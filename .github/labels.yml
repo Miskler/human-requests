@@ -1,0 +1,12 @@
+# .github/labels.yml
+- name: core
+  color: "B60205"   # red
+  description: Engine / core logic
+
+- name: anti-bot
+  color: "FBCA04"   # yellow
+  description: Sphinx extension
+
+- name: python interface
+  color: "1D76DB"   # blue
+  description: Public Python API

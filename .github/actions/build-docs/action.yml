@@ -1,0 +1,45 @@
+name: 'Build Documentation'
+description: 'Build all documentation (main + examples) for human-requests'
+outputs:
+  site-path:
+    description: 'Path to the built site'
+    value: ${{ steps.build.outputs.site-path }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Build main documentation
+      shell: bash
+      run: |
+        make docs
+        
+    - name: Move build to _site
+      id: build
+      shell: bash
+      run: |
+        # Create main site structure
+        mkdir -p _site
+        cp -r docs/_build/html/* _site/
+
+    - name: Move coverage to _site
+      shell: bash
+      run: |
+        # Add coverage report
+        mkdir -p _site/coverage
+        cp -r htmlcov/* _site/coverage/
+        # Add coverage badge
+        cp coverage.svg _site/
+        
+    - name: Move tests to _site
+      shell: bash
+      run: |  
+        # Add tests report
+        mkdir -p _site/tests
+        cp -r tests-report.html _site/tests/
+
+        # Add tests badge
+        cp tests-badge.svg _site/
+
+    - name: Return output
+      shell: bash
+      run: |
+        echo "site-path=_site" >> $GITHUB_OUTPUT
