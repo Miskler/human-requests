@@ -5,10 +5,23 @@ on:
     inputs:
       upload-coverage:
         type: boolean
-        default: false
+        default: true
       python-versions:
         type: string
-        default: '["3.10","3.11","3.12","3.13"]'
+        default: '["3.12"]'
+  workflow_dispatch:
+    inputs:
+      upload-coverage:
+        description: "Отправлять coverage на Codecov?"
+        type: boolean
+        default: true
+      python-versions:
+        description: "JSON-список версий Python"
+        type: string
+        default: '["3.12"]'
+  pull_request:
+    branches:
+      - "**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ${{ fromJson(inputs.python-versions) }}
+        python-version: ${{ fromJson(inputs.python-versions || github.event.inputs.python-versions || '["3.12"]') }}
         include:
           - python-version: "3.12"
             primary: true
@@ -67,7 +80,7 @@ jobs:
 
   reports:
     needs: tests
-    if: contains(fromJson(inputs.python-versions), '3.12') && inputs.upload-coverage
+    if: contains(fromJson(inputs.python-versions || github.event.inputs.python-versions || '["3.12"]'), '3.12') && (inputs.upload-coverage || github.event.inputs.upload-coverage)
     runs-on: ubuntu-latest
 
     steps:
