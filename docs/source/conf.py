@@ -9,6 +9,8 @@ from docutils.parsers.rst import roles
 # ──────────────────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parents[2]          # repo root
 sys.path.insert(0, str(ROOT))                       # import project without install
+EXT_DIR = Path(__file__).resolve().parent / "_ext"
+sys.path.insert(0, str(EXT_DIR))                      # подключаем приватное расширение
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Project meta
@@ -30,6 +32,8 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.viewcode",
     "autoapi.extension",
+    "antibot_table",
+    "antibot_plot",
 ]
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -37,6 +41,7 @@ extensions = [
 # ──────────────────────────────────────────────────────────────────────────────
 html_theme       = "furo"
 html_static_path = ["_static"]
+html_css_files = ["antibot.css"]
 html_theme_options = {
     "light_logo": "logo_day.png",
     "dark_logo": "logo_night.png",

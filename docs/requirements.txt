@@ -3,3 +3,4 @@ sphinx-autoapi
 furo
 docutils
 types-docutils
+matplotlib
