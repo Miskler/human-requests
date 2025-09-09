@@ -12,12 +12,7 @@ help:
 	@echo "  clean           - Clean build artifacts"
 	@echo "  build           - Build package"
 	@echo "  docs            - Build documentation"
-	@echo "  example-docs    - Build example documentation"
-	@echo "  build-all-docs  - Build all documentation"
 	@echo "  serve-docs      - Serve documentation locally"
-	@echo "  serve-examples  - Serve examples locally"
-	@echo "  ci-test         - Run full CI test suite"
-	@echo "  prepare-release - Prepare for release"
 	@echo "  generate-badges - Generate coverage badge"
 
 install:
@@ -34,15 +29,15 @@ test-quick:
 
 lint:
 	flake8 network_manager/ tests/
-	black --check network_manager/ tests/
-	isort --check-only network_manager/ tests/
+	black --check human_requests/ tests/
+	isort --check-only human_requests/ tests/
 
 format:
-	black network_manager/ tests/
-	isort network_manager/ tests/
+	black human_requests/ tests/
+	isort human_requests/ tests/
 
 type-check:
-	mypy network_manager/
+	mypy human_requests/
 
 clean:
 	rm -rf build/ dist/ *.egg-info/
@@ -64,21 +59,6 @@ docs:
 
 serve-docs:
 	cd docs/_build/html && python -m http.server 8000
-
-# CI simulation
-ci-test:
-	$(MAKE) lint
-	$(MAKE) type-check
-	$(MAKE) test
-	$(MAKE) build
-	$(MAKE) build-all-docs
-
-# Release preparation
-prepare-release:
-	$(MAKE) clean
-	$(MAKE) ci-test
-	$(MAKE) build
-	twine check dist/*
 
 # Badge generation
 generate-badges:
