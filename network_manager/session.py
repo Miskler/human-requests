@@ -21,14 +21,12 @@ core.session — единая state-ful-сессия для *curl_cffi* и *Play
 
 from contextlib import asynccontextmanager
 from time import perf_counter
-from typing import AsyncGenerator, Awaitable, Callable, Literal, Mapping, Optional
+from typing import AsyncGenerator, Literal, Mapping, Optional
 from urllib.parse import urlsplit
 
 from curl_cffi import requests as cffi_requests
 from playwright.async_api import (
-    BrowserContext,
     Page,
-    TimeoutError as PlaywrightTimeoutError,
     async_playwright,
 )
 
@@ -55,6 +53,13 @@ from .abstraction.cookies import CookieManager
 from .abstraction.http import HttpMethod, URL
 from .abstraction.request import Request
 from .abstraction.response import Response
+
+# Новые вынесенные утилиты
+from .helper_tools import (
+    build_storage_state_for_context,
+    merge_storage_state_from_context,
+    handle_nav_with_retries,
+)
 
 __all__ = ["Session"]
 
@@ -151,86 +156,6 @@ class Session:
                 self._browser = await getattr(self._pw, self.browser_name).launch(
                     headless=self.headless
                 )
-
-    # ────── storage_state helpers ──────
-    def _build_storage_state_for_context(self) -> dict:
-        """
-        Собирает единый storage_state для new_context:
-        - cookies — из CookieManager (как playwright-совместимые dict)
-        - origins.localStorage — из self.local_storage
-        """
-        cookie_list = self.cookies.to_playwright()  # list[dict] совместимая с PW
-        origins = []
-        for origin, kv in self.local_storage.items():
-            if not kv:
-                continue
-            origins.append(
-                {
-                    "origin": origin,
-                    "localStorage": [{"name": k, "value": v} for k, v in kv.items()],
-                }
-            )
-        return {"cookies": cookie_list, "origins": origins}
-
-    async def _merge_storage_state_from_context(self, ctx: BrowserContext) -> None:
-        """
-        Читает storage_state из контекста и синхронизирует внутреннее состояние:
-        - localStorage: ПОЛНАЯ перезапись self.local_storage из state["origins"]
-        - cookies: ДОБАВЛЕНИЕ/ОБНОВЛЕНИЕ в CookieManager из state["cookies"]
-        """
-        state = await ctx.storage_state()  # dict с 'cookies' и 'origins'
-        # localStorage — точная перезапись
-        new_ls: dict[str, dict[str, str]] = {}
-        for o in state.get("origins", []) or []:
-            origin = str(o.get("origin", ""))
-            if not origin:
-                continue
-            kv: dict[str, str] = {}
-            for pair in o.get("localStorage", []) or []:
-                name = str(pair.get("name", ""))
-                value = "" if pair.get("value") is None else str(pair.get("value"))
-                if name:
-                    kv[name] = value
-            new_ls[origin] = kv
-        self.local_storage = new_ls
-
-        # cookies — пополняем CookieManager
-        cookies_list = state.get("cookies", []) or []
-        if cookies_list:
-            # add_from_playwright принимает список cookie-словари в формате PW
-            self.cookies.add_from_playwright(cookies_list)
-
-    # ────── общий хендлер ретраев навигации ──────
-    async def _handle_nav_with_retries(
-        self,
-        page: Page,
-        *,
-        target_url: str,
-        wait_until: Literal["commit", "load", "domcontentloaded", "networkidle"],
-        timeout_ms: int,
-        attempts: int,
-        on_retry: Optional[Callable[[], Awaitable[None]]] = None
-    ) -> None:
-        """
-        Единый хендлер навигации с мягкими повторами для goto/render.
-        Ловит ТОЛЬКО PlaywrightTimeoutError. На повторах вызывает on_retry()
-        (если задан), затем делает reload либо goto в зависимости от состояния страницы.
-        """
-        try:
-            await page.goto(target_url, wait_until=wait_until, timeout=timeout_ms)
-        except PlaywrightTimeoutError as last_err:
-            while attempts > 0:
-                attempts -= 1
-                if on_retry is not None:
-                    await on_retry()
-                try:
-                    await page.reload(wait_until=wait_until, timeout=timeout_ms)
-                    last_err = None  # type: ignore[assignment]
-                    break
-                except PlaywrightTimeoutError as e:
-                    last_err = e
-            if last_err is not None:
-                raise last_err
 
     # ────── public: async HTTP ──────
     async def request(
@@ -353,14 +278,17 @@ class Session:
         await self._ensure_browser()
 
         # создаём новый контекст с ЕДИНЫМ storage_state
-        storage_state = self._build_storage_state_for_context()
+        storage_state = build_storage_state_for_context(
+            local_storage=self.local_storage,
+            cookie_manager=self.cookies,
+        )
         ctx = await self._browser.new_context(storage_state=storage_state)  # type: ignore[union-attr]
         page = await ctx.new_page()
         timeout_ms = int(self.timeout * 1000)
         attempts_left = self.page_retry if retry is None else int(retry)
 
         try:
-            await self._handle_nav_with_retries(
+            await handle_nav_with_retries(
                 page,
                 target_url=url,
                 wait_until=wait_until,
@@ -371,7 +299,9 @@ class Session:
             yield page
         finally:
             # обновляем внутреннее состояние из контекста
-            await self._merge_storage_state_from_context(ctx)
+            self.local_storage = await merge_storage_state_from_context(
+                ctx, cookie_manager=self.cookies
+            )
             await page.close()
             await ctx.close()
 
@@ -392,7 +322,10 @@ class Session:
         """
         await self._ensure_browser()
 
-        storage_state = self._build_storage_state_for_context()
+        storage_state = build_storage_state_for_context(
+            local_storage=self.local_storage,
+            cookie_manager=self.cookies,
+        )
         ctx = await self._browser.new_context(storage_state=storage_state)  # type: ignore[union-attr]
 
         timeout_ms = int(self.timeout * 1000)
@@ -401,12 +334,14 @@ class Session:
         async def _attach_route_once() -> None:
             # снимаем старые, чтобы гарантированно перевесить на повторе
             await ctx.unroute("**/*")
+
             async def handler(route, _req):  # noqa: ANN001
                 await route.fulfill(
                     status=response.status_code,
                     headers=dict(response.headers),
                     body=response.body.encode("utf-8"),
                 )
+
             await ctx.route("**/*", handler, times=1)
 
         await _attach_route_once()
@@ -417,7 +352,7 @@ class Session:
             async def _on_retry() -> None:
                 await _attach_route_once()
 
-            await self._handle_nav_with_retries(
+            await handle_nav_with_retries(
                 page,
                 target_url=response.url.full_url,
                 wait_until=wait_until,
@@ -427,7 +362,9 @@ class Session:
             )
             yield page
         finally:
-            await self._merge_storage_state_from_context(ctx)
+            self.local_storage = await merge_storage_state_from_context(
+                ctx, cookie_manager=self.cookies
+            )
             await page.close()
             await ctx.close()
 
