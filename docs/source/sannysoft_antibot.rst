@@ -1,3 +1,4 @@
+.. _browser-antibot-report:
 Browser Anti-Bot Report
 =======================
 

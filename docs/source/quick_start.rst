@@ -8,7 +8,7 @@ Quick Start
 
 .. code-block:: bash
 
-    pip install network-manager[playwright]
+    pip install human-requests[playwright]
     playwright install
 
 Стандартный playwright с набором браузеров (Chrome, Firefox, WebKit).
@@ -16,21 +16,33 @@ Quick Start
 
 .. code-block:: bash
 
-    pip install network-manager[playwright-stealth]
+    pip install human-requests[playwright-stealth]
     playwright install
 
 Стандартный playwright со стелс-патчем, который скрывает некоторые сигнатуры автоматизированного браузера.
 
 .. code-block:: bash
 
-    pip install network-manager[camoufox]
+    pip install human-requests[camoufox]
     camoufox fetch
 
 Playwright браузер на базе Firefox. Основная фишка - спуффинг сигнатур, что позволяет слать больше трафика и обходить баны по fingerprint.
 
+.. code-block:: bash
+
+    pip install human-requests[all]
+
+Можно установить все сразу.
+
 
 Использование
 -------------
+
+Пример реверса сайта 5ka.ru
+
+Я выбрал этот сайт, потому что он побудил меня разработать эту библиотеку.
+Дело в том, что имперсонация hrequests плоха, или ее вообще нет (не могу утверждать).
+Из-за чего сайт распознавал бота.
 
 .. code-block:: python
 
@@ -42,7 +54,9 @@ Playwright браузер на базе Firefox. Основная фишка - �
         # Инициализация сессии
         s = Session(headless=True, # False полезно для отладки
                     browser="camoufox", # camoufox самый лучший для массовых запросов, но он же порой менее стабильный
-                    playwright_stealth=False, # в случае не camoufox (он уже поддержимвает это по умолчанию), скрывает некоторые сигнатуры автоматизированного браузера
+                    # в случае не camoufox (он уже поддержимвает это по умолчанию), скрывает некоторые сигнатуры автоматизированного браузера
+                    # рекомендую для обычных playwright браузеров все включать
+                    playwright_stealth=False,
                     spoof=ImpersonationConfig(
                         policy=Policy.INIT_RANDOM,
                         geo_country="RU",
@@ -97,3 +111,19 @@ Playwright браузер на базе Firefox. Основная фишка - �
 
     if __name__ == "__main__":
         asyncio.run(main())
+
+Для подробностей, смотрите так же:
+
+* :class:`~human_requests.session.Session`
+
+* :class:`~human_requests.impersonation.ImpersonationConfig`
+
+* :class:`~human_requests.abstraction.request.Request`
+
+* :class:`~human_requests.abstraction.response.Response`
+
+* :class:`~human_requests.abstraction.http.URL`
+
+* :class:`~human_requests.abstraction.http.HttpMethod`
+
+О том как правильно выбрать браузер смотрите :ref:`browser-antibot-report`
