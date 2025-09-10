@@ -42,7 +42,7 @@ from playwright.async_api._context_manager import PlaywrightContextManager
 try:
     from playwright_stealth import Stealth  # type: ignore[import-untyped]
     from playwright_stealth.context_managers import (
-        AsyncWrappingContextManager as StealthContextManager  # type: ignore[import-untyped]
+        AsyncWrappingContextManager as StealthContextManager,  # type: ignore[import-untyped]
     )
 except ImportError:  # пакет не установлен — используем заглушки типов/значений
     Stealth = None
@@ -163,7 +163,9 @@ class Session:
                         "или напрямую: pip install camoufox"
                     )
                 if self._camoufox_cm is None:
-                    self._camoufox_cm = AsyncCamoufox(headless=self.headless, persistent_context=False)
+                    self._camoufox_cm = AsyncCamoufox(
+                        headless=self.headless, persistent_context=False
+                    )
                 browser = await self._camoufox_cm.__aenter__()
                 assert isinstance(browser, Browser)
                 self._browser = browser
@@ -199,7 +201,7 @@ class Session:
         # lazy curl session
         if self._curl is None:
             self._curl = cffi_requests.AsyncSession()
-        
+
         curl = self._curl
         assert curl is not None  # для mypy: ниже уже не union
 
@@ -412,7 +414,7 @@ class Session:
                 await self._stealth_cm.__aexit__(None, None, None)
                 self._stealth_cm = None
 
-            await self._pw.__aexit__(None, None, None)
+            await self._pw.stop()
             self._pw = None
 
         if self._curl:
