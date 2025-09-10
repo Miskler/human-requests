@@ -6,11 +6,11 @@ on:
       runs:
         description: "Сколько прогонов сделать"
         required: true
-        default: "20"
+        default: "2"
       browsers:
         description: "Список браузеров через запятую"
         required: true
-        default: "firefox,chromium,webkit,camoufox"
+        default: "firefox,chromium,webkit,camoufox,patchright"
       stealth:
         description: "stealth-срезы через запятую"
         required: true

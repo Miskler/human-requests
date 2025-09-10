@@ -1,6 +1,7 @@
 playwright
 playwright-stealth
 camoufox
+patchright
 
 curl-cffi
 browserforge
