@@ -2,7 +2,9 @@
   "firefox": {
     "all": {
       "stable": [],
-      "unstable": []
+      "unstable": [
+        "Broken Image Dimensions"
+      ]
     },
     "base": {
       "stable": [
@@ -15,8 +17,7 @@
     },
     "stealth": {
       "stable": [],
-      "unstable": ["WebGL Vendor",
-                   "WebGL Renderer"]
+      "unstable": []
     },
     "fail_counts": {
       "base": {
@@ -25,7 +26,8 @@
           "Chrome(New)": 4,
           "Plugins Length(Old)": 4,
           "Plugins is of type PluginArray": 4,
-          "WebDriver(New)": 4
+          "WebDriver(New)": 4,
+          "Broken Image Dimensions": 2
         },
         "modes": {
           "goto": {
@@ -35,6 +37,7 @@
             "WebDriver(New)": 2
           },
           "render": {
+            "Broken Image Dimensions": 2,
             "Chrome(New)": 2,
             "Plugins Length(Old)": 2,
             "Plugins is of type PluginArray": 2,
@@ -44,30 +47,35 @@
       },
       "stealth": {
         "attempts": 4,
-        "total": {},
+        "total": {
+          "Broken Image Dimensions": 2
+        },
         "modes": {
           "goto": {},
-          "render": {}
+          "render": {
+            "Broken Image Dimensions": 2
+          }
         }
       }
     },
     "timings": {
-      "average_time_response": 2.760354920124996,
-      "minimum_time_response": 2.2836037929999975,
-      "maximum_time_response": 4.2576301299999955,
+      "average_time_response": 8.37393753462311,
+      "minimum_time_response": 5.66668572499475,
+      "maximum_time_response": 11.210725929995533,
       "unit": "seconds"
     }
   },
   "chromium": {
     "all": {
       "stable": [],
-      "unstable": []
+      "unstable": [
+        "Broken Image Dimensions"
+      ]
     },
     "base": {
       "stable": [
         "VIDEO_CODECS",
-        "WebDriver(New)",
-        "WebGL Renderer"
+        "WebDriver(New)"
       ],
       "unstable": []
     },
@@ -81,41 +89,46 @@
         "total": {
           "VIDEO_CODECS": 4,
           "WebDriver(New)": 4,
-          "WebGL Renderer": 4
+          "Broken Image Dimensions": 2
         },
         "modes": {
           "goto": {
             "VIDEO_CODECS": 2,
-            "WebDriver(New)": 2,
-            "WebGL Renderer": 2
+            "WebDriver(New)": 2
           },
           "render": {
+            "Broken Image Dimensions": 2,
             "VIDEO_CODECS": 2,
-            "WebDriver(New)": 2,
-            "WebGL Renderer": 2
+            "WebDriver(New)": 2
           }
         }
       },
       "stealth": {
         "attempts": 4,
-        "total": {},
+        "total": {
+          "Broken Image Dimensions": 2
+        },
         "modes": {
           "goto": {},
-          "render": {}
+          "render": {
+            "Broken Image Dimensions": 2
+          }
         }
       }
     },
     "timings": {
-      "average_time_response": 2.196773504499994,
-      "minimum_time_response": 1.226121379999995,
-      "maximum_time_response": 3.3954292519999854,
+      "average_time_response": 6.077010113000142,
+      "minimum_time_response": 3.632809068003553,
+      "maximum_time_response": 18.047962527998607,
       "unit": "seconds"
     }
   },
   "webkit": {
     "all": {
       "stable": [],
-      "unstable": []
+      "unstable": [
+        "Broken Image Dimensions"
+      ]
     },
     "base": {
       "stable": [
@@ -133,7 +146,8 @@
         "attempts": 4,
         "total": {
           "Chrome(New)": 4,
-          "WebDriver(New)": 4
+          "WebDriver(New)": 4,
+          "Broken Image Dimensions": 2
         },
         "modes": {
           "goto": {
@@ -141,6 +155,7 @@
             "WebDriver(New)": 2
           },
           "render": {
+            "Broken Image Dimensions": 2,
             "Chrome(New)": 2,
             "WebDriver(New)": 2
           }
@@ -148,17 +163,21 @@
       },
       "stealth": {
         "attempts": 4,
-        "total": {},
+        "total": {
+          "Broken Image Dimensions": 2
+        },
         "modes": {
           "goto": {},
-          "render": {}
+          "render": {
+            "Broken Image Dimensions": 2
+          }
         }
       }
     },
     "timings": {
-      "average_time_response": 2.214203180125004,
-      "minimum_time_response": 1.4339734659999976,
-      "maximum_time_response": 4.623393355000019,
+      "average_time_response": 5.015014558252005,
+      "minimum_time_response": 3.2599704320018645,
+      "maximum_time_response": 5.948324433004018,
       "unit": "seconds"
     }
   },
@@ -184,15 +203,15 @@
         "attempts": 4,
         "total": {
           "Chrome(New)": 4,
-          "Broken Image Dimensions": 1
+          "Broken Image Dimensions": 2
         },
         "modes": {
           "goto": {
             "Chrome(New)": 2
           },
           "render": {
-            "Chrome(New)": 2,
-            "Broken Image Dimensions": 1
+            "Broken Image Dimensions": 2,
+            "Chrome(New)": 2
           }
         }
       },
@@ -206,9 +225,59 @@
       }
     },
     "timings": {
-      "average_time_response": 6.347006135250027,
-      "minimum_time_response": 3.0827464360000363,
-      "maximum_time_response": 15.260349047000034,
+      "average_time_response": 11.463265123747988,
+      "minimum_time_response": 7.2918833369913045,
+      "maximum_time_response": 17.730024250995484,
+      "unit": "seconds"
+    }
+  },
+  "patchright": {
+    "all": {
+      "stable": [],
+      "unstable": []
+    },
+    "base": {
+      "stable": [
+        "VIDEO_CODECS"
+      ],
+      "unstable": [
+        "Broken Image Dimensions"
+      ]
+    },
+    "stealth": {
+      "stable": [],
+      "unstable": []
+    },
+    "fail_counts": {
+      "base": {
+        "attempts": 4,
+        "total": {
+          "VIDEO_CODECS": 4,
+          "Broken Image Dimensions": 2
+        },
+        "modes": {
+          "goto": {
+            "VIDEO_CODECS": 2
+          },
+          "render": {
+            "Broken Image Dimensions": 2,
+            "VIDEO_CODECS": 2
+          }
+        }
+      },
+      "stealth": {
+        "attempts": 0,
+        "total": {},
+        "modes": {
+          "goto": {},
+          "render": {}
+        }
+      }
+    },
+    "timings": {
+      "average_time_response": 5.024329717249202,
+      "minimum_time_response": 3.6901202379958704,
+      "maximum_time_response": 6.336405352994916,
       "unit": "seconds"
     }
   }

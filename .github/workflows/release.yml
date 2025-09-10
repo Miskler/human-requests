@@ -57,7 +57,7 @@ jobs:
 
       - name: Install dev / docs dependencies
         run: |
-          make install-dev
+          pip install -r docs/requirements.txt
           
       - name: Download coverage artifacts
         uses: actions/download-artifact@v4

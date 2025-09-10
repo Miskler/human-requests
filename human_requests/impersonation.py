@@ -15,6 +15,7 @@ from curl_cffi import requests as cffi_requests
 _ALL_PROFILES: list[str] = sorted(get_args(cffi_requests.impersonate.BrowserTypeLiteral))
 _ENGINE_FAM = {
     "chromium": "chrome",
+    "patchright": "chrome",
     "edge": "chrome",
     "opera": "chrome",
     "yandex": "chrome",

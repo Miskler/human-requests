@@ -34,7 +34,7 @@ from .abstraction.cookies import CookieManager
 from .abstraction.http import URL, HttpMethod
 from .abstraction.request import Request
 from .abstraction.response import Response
-from .browser_master import BrowserMaster
+from .browser_master import BrowserMaster, Engine
 from .impersonation import ImpersonationConfig
 from .tools.helper_tools import (
     build_storage_state_for_context,
@@ -59,7 +59,7 @@ class Session:
         *,
         timeout: float = 15.0,
         headless: bool = True,
-        browser: Literal["chromium", "firefox", "webkit", "camoufox"] = "chromium",
+        browser: Engine = "chromium",
         spoof: ImpersonationConfig | None = None,
         playwright_stealth: bool = True,
         page_retry: int = 2,
@@ -78,7 +78,7 @@ class Session:
 
         self.timeout: float = timeout
         self.headless: bool = headless
-        self.browser_name: Literal["chromium", "firefox", "webkit", "camoufox"] = browser
+        self.browser_name: Engine = browser
         self.spoof: ImpersonationConfig = spoof or ImpersonationConfig()
         self.playwright_stealth: bool = bool(playwright_stealth)
         self.page_retry: int = int(page_retry)

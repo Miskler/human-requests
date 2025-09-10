@@ -36,7 +36,8 @@ def env_list(name: str, default_csv: str) -> list[str]:
 
 
 SANNY_URL = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")
-BROWSERS = env_list("BROWSERS", "firefox,chromium,webkit,camoufox")
+BROWSERS = env_list("BROWSERS", "firefox,chromium,webkit,camoufox,patchright")
+BROWSERS_UNSUPPORT_STEALTH = ["camoufox", "patchright"]
 STEALTH_OPS = env_list("STEALTH_OPS", "stealth,base")
 MODES = env_list("MODES", "goto,render")
 HEADLESS = os.getenv("HEADLESS", "false").lower() in {"1", "true", "yes", "y"}
@@ -55,7 +56,7 @@ async def _run_once(browser: str, stealth: str, mode: str) -> tuple[set[str], fl
       - множество упавших проверок (имена)
       - elapsed (сек) на полный цикл загрузки и парсинга
     """
-    if browser == "camoufox" and stealth == "stealth":
+    if browser in BROWSERS_UNSUPPORT_STEALTH and stealth == "stealth":
         return set(), 0.0  # несовместимо — пропускаем без времени
 
     cfg = ImpersonationConfig(sync_with_engine=True)
@@ -99,7 +100,7 @@ async def gather_stats(
     total_attempts = 0
     for b in browsers:
         for s in stealth_ops:
-            if b == "camoufox" and s == "stealth":
+            if b in BROWSERS_UNSUPPORT_STEALTH and s == "stealth":
                 continue
             total_attempts += runs * len(modes)
 
@@ -121,7 +122,7 @@ async def gather_stats(
         for _ in range(runs):
             for stealth in stealth_ops:
                 for mode in modes:
-                    if browser == "camoufox" and stealth == "stealth":
+                    if browser in BROWSERS_UNSUPPORT_STEALTH and stealth == "stealth":
                         continue
 
                     failed, elapsed = await _run_once(browser, stealth, mode)
@@ -247,7 +248,7 @@ def main() -> None:
         "--browsers",
         type=str,
         default=",".join(BROWSERS),
-        help="Список браузеров через запятую (firefox,chromium,webkit,camoufox).",
+        help="Список браузеров через запятую (firefox,chromium,webkit,camoufox,patchright).",
     )
     ap.add_argument(
         "--stealth",

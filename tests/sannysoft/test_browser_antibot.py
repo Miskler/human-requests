@@ -15,7 +15,8 @@ from tests.sannysoft.tool import (
 
 # ---------------------------------------------------------  settings
 SANNY_URL = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")
-BROWSERS = ("firefox", "chromium", "webkit", "camoufox")
+BROWSERS = ("firefox", "chromium", "webkit", "camoufox", "patchright")
+BROWSERS_UNSUPPORT_STEALTH = ("camoufox", "patchright")
 STEALTH_OPS = ("stealth", "base")  # включён playwright-stealth или нет
 HEADLESS = False
 
@@ -39,8 +40,8 @@ async def test_antibot_matrix(browser: str, stealth: str, mode: str):
     Один элемент матрицы.  Формат имени теста в отчёте Py-test:
         test_antibot_matrix[chromium-stealth-goto], к примеру.
     """
-    if browser == "camoufox" and stealth == "stealth":
-        pytest.skip("playwright_stealth=True is incompatible with browser='camoufox'")
+    if browser in BROWSERS_UNSUPPORT_STEALTH and stealth == "stealth":
+        pytest.skip(f"playwright_stealth=True is incompatible with browser='{browser}'")
 
     cfg = ImpersonationConfig(sync_with_engine=True)
     session = Session(
@@ -66,6 +67,10 @@ async def test_antibot_matrix(browser: str, stealth: str, mode: str):
     fails = select_unexpected_failures(browser, stealth, result, ANTI_ERROR)
 
     if fails:
-        matrix_tag = f"{browser}/{mode}" if browser == "camoufox" else f"{browser}/{stealth}/{mode}"
+        matrix_tag = (
+            f"{browser}/{mode}"
+            if browser in BROWSERS_UNSUPPORT_STEALTH
+            else f"{browser}/{stealth}/{mode}"
+        )
         fail_list = ", ".join(fails)
         pytest.fail(f"[{matrix_tag}] не прошли проверки: {fail_list}", pytrace=False)

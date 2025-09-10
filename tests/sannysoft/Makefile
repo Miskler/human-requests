@@ -4,7 +4,7 @@ PY        ?= python
 
 # ======= Config (override via env/CLI) =======
 RUNS       ?= 2
-BROWSERS   ?= firefox,chromium,webkit,camoufox
+BROWSERS   ?= firefox,chromium,webkit,camoufox,patchright
 STEALTH    ?= stealth,base
 MODES      ?= goto,render
 SANNY_URL  ?= https://bot.sannysoft.com/
@@ -54,7 +54,7 @@ sannysoft-stats-firefox:
 	@$(MAKE) -s sannysoft-stats BROWSERS=firefox
 
 sannysoft-stats-all:
-	@$(MAKE) -s sannysoft-stats BROWSERS='firefox,chromium,webkit,camoufox'
+	@$(MAKE) -s sannysoft-stats BROWSERS='firefox,chromium,webkit,camoufox,patchright'
 
 sannysoft-open:
 	@test -f '$(OUT_JSON)' && (jq '.' '$(OUT_JSON)' || cat '$(OUT_JSON)') || echo "no $(OUT_JSON)"
