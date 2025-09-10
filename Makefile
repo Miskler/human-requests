@@ -35,7 +35,7 @@ test-quick:
 	pytest --tb=short
 
 lint:
-	flake8 network_manager/ tests/
+	flake8 human_requests/ tests/
 	black --check human_requests/ tests/
 	isort --check-only human_requests/ tests/
 

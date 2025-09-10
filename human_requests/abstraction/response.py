@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, Literal, Optional
+from typing import Callable, Literal, Optional, AsyncGenerator
 
 from playwright.async_api import Page
 
@@ -39,7 +39,7 @@ class Response:
         self,
         wait_until: Literal["commit", "load", "domcontentloaded", "networkidle"] = "commit",
         retry: int = 2,
-    ) -> Page:
+    ) -> AsyncGenerator[Page, None]:
         """Renders the response content in the current browser.
         It will look like we requested it through the browser from the beginning.
 

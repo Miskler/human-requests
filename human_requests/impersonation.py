@@ -83,7 +83,8 @@ class ImpersonationConfig:
     # --- дополнительные параметры -----------------------------------------
     geo_country: str = "en-US"  # ISO-2 code (DE, RU…)
     sync_with_engine: bool = True  # ограничивать семейством движка Playwright
-    """Ограничивать семейством текущим движком Playwright (chromium, firefox, webkit) или camoufox=firefox"""
+    """Ограничивать семейством текущим движком Playwright (chromium, firefox, webkit)
+    или camoufox=firefox"""
     rotate_headers: bool = True  # использовать HeaderGenerator
     """Генерировать ли браузеро-подобные заголовки (user-agent, accept-language, etc.)"""
 

@@ -11,12 +11,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-# --- repo-root on sys.path (so imports work when run from tests/) ---
-REPO_ROOT = Path(__file__).resolve().parents[2]  # <repo> / tests / sannysoft / file.py
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-# --------------------------------------------------------------------
-
 from tqdm import tqdm  # прогрессбар
 
 from human_requests import ImpersonationConfig, Session
@@ -26,6 +20,12 @@ from tests.sannysoft.tool import (
     html_via_goto,
     html_via_render,
 )
+
+# --- repo-root on sys.path (so imports work when run from tests/) ---
+REPO_ROOT = Path(__file__).resolve().parents[2]  # <repo> / tests / sannysoft / file.py
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+# --------------------------------------------------------------------
 
 
 # ========================== CLI/ENV defaults ==========================

@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Iterable, Literal
+from typing import Iterable, Iterator, Literal
 from urllib.parse import urlsplit
 
 
@@ -45,7 +45,8 @@ class Cookie:
 
     same_site: Literal["Lax", "Strict", "None"] = "Lax"
     """
-    This is the policy that determines whether the cookie will be sent with requests that are "same-site".
+    This is the policy that determines whether the cookie
+    will be sent with requests that are "same-site".
     """
 
     secure: bool = False
@@ -71,7 +72,8 @@ class Cookie:
         return datetime.fromtimestamp(self.max_age)
 
     def to_playwright_like_dict(self) -> dict[str, str | int | bool | None]:
-        """This method returns a dictionary of the cookie in a format that is compatible with Playwright."""
+        """This method returns a dictionary of the cookie in a format
+        that is compatible with Playwright."""
         return {
             "name": self.name,
             "value": self.value,
@@ -103,7 +105,7 @@ class CookieManager:
     storage: list[Cookie] = field(default_factory=list)
 
     # ────── dunder helpers ──────
-    def __iter__(self) -> Iterable[Cookie]:
+    def __iter__(self) -> Iterator[Cookie]:
         return iter(self.storage)
 
     def __len__(self) -> int:

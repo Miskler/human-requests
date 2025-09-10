@@ -111,7 +111,7 @@ class Session:
         # пример: {"https://example.com": {"k1": "v1", "k2": "v2"}}
         self.local_storage: dict[str, dict[str, str]] = {}
         """Хранилище-синхронизатор localStorage.
-        
+
         sessionStorage сюда не входит, он удаляется сразу же после выхода из goto/render."""
 
         self._curl: Optional[cffi_requests.AsyncSession] = None
@@ -128,7 +128,8 @@ class Session:
                 # Явно ругаемся, если попросили stealth, а пакета нет
                 if self.playwright_stealth and Stealth is None:
                     raise RuntimeError(
-                        "Запрошен playwright_stealth=True, но пакет 'playwright-stealth' не установлен.\n"
+                        "Запрошен playwright_stealth=True, "
+                        "но пакет 'playwright-stealth' не установлен.\n"
                         "Установите дополнительную зависимость, например:\n"
                         "  pip install 'human-requests[stealth]'\n"
                         "или напрямую: pip install playwright-stealth"
@@ -168,11 +169,13 @@ class Session:
         **kwargs,
     ) -> Response:
         """
-        Обычный быстрый запрос через curl_cffi. Обязательно нужно передать HttpMethod или его строковое представление а так же url.
+        Обычный быстрый запрос через curl_cffi.
+        Обязательно нужно передать HttpMethod или его строковое представление а так же url.
 
         Опционально можно передать дополнительные заголовки.
 
-        Через **kwargs можно передать дополнительные параметры curl_cffi.AsyncSession.request (см. их документацию для подробностей).
+        Через **kwargs можно передать дополнительные параметры curl_cffi.AsyncSession.request
+        (см. их документацию для подробностей).
         Повторяем ТОЛЬКО при cffi Timeout: ``curl_cffi.requests.exceptions.Timeout``.
         """
         method_enum = method if isinstance(method, HttpMethod) else HttpMethod[str(method).upper()]
@@ -335,7 +338,7 @@ class Session:
             # снимаем старые, чтобы гарантированно перевесить на повторе
             await ctx.unroute("**/*")
 
-            async def handler(route, _req):  # noqa: ANN001
+            async def handler(route, _req) -> None:  # noqa: ANN001
                 await route.fulfill(
                     status=response.status_code,
                     headers=dict(response.headers),

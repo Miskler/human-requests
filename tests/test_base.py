@@ -76,8 +76,10 @@ async def test_direct_html_base_sets_cookie(session_obj: Session):
     session_obj.cookies.delete(COOKIE_BASE, domain=URL(HTML_BASE).domain)
     assert _cookie_value(session_obj.cookies, COOKIE_BASE) is None
 
-    # Повторный запрос: сервер установит куку заново, но мы проверяем, что ранее удалённая не была отправлена
-    # (поскольку эндпоинт не возвращает информацию о полученных куках, полагаемся на отсутствие в jar до запроса)
+    # Повторный запрос: сервер установит куку заново, но мы проверяем,
+    # что ранее удалённая не была отправлена
+    # (поскольку эндпоинт не возвращает информацию о полученных куках,
+    # полагаемся на отсутствие в jar до запроса)
     resp3 = await session_obj.request(HttpMethod.GET, f"{HTML_BASE}/base")
     assert resp3.status_code == 200
     assert _cookie_value(resp3.cookies, COOKIE_BASE) is not None  # сервер устанавливает заново
@@ -281,7 +283,7 @@ def raw_list_to_dict(raw: Iterable[tuple[str, str]]) -> dict[str, str]:
     Преобразует raw_asgi_headers (list of [name, value]) в словарь.
     При дублировании ключей берём первое встречное значение.
     """
-    out: Dict[str, str] = {}
+    out: dict[str, str] = {}
     for name, val in raw:
         k = name.lower()
         if k not in out:
@@ -320,7 +322,8 @@ async def test_httpbin_headers_echo_diag(session_obj: Session):
     # 2) заголовки, которые появились в raw, но не были в клиенте (транспорт добавил их)
     transport_added = sorted(list(set(raw_f.keys()) - set(sent_f.keys())))
 
-    # 3) заголовки, которые видны у клиента, но не попали в нормализованный echoed (фильтрация фреймворка)
+    # 3) заголовки, которые видны у клиента,
+    #    но не попали в нормализованный echoed (фильтрация фреймворка)
     client_not_echoed = sorted(list(set(sent_f.keys()) - set(echoed_f.keys())))
 
     # 4) несовпадения значений между отправленным и эхо (только для тех, что видны и там и там)

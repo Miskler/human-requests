@@ -8,19 +8,25 @@ class HttpMethod(Enum):
     """Represents an HTTP method."""
 
     GET = "GET"
-    """Retrieves data from a server. It only reads data and does not modify it."""
+    """Retrieves data from a server.
+    It only reads data and does not modify it."""
     POST = "POST"
-    """Submits data to a server to create a new resource. It can also be used to update existing resources."""
+    """Submits data to a server to create a new resource.
+    It can also be used to update existing resources."""
     PUT = "PUT"
-    """Updates a existing resource on a server. It can also be used to create a new resource."""
+    """Updates a existing resource on a server.
+    It can also be used to create a new resource."""
     PATCH = "PATCH"
-    """Updates a existing resource on a server. It only updates the fields that are provided in the request body."""
+    """Updates a existing resource on a server.
+    It only updates the fields that are provided in the request body."""
     DELETE = "DELETE"
     """Deletes a resource from a server."""
     HEAD = "HEAD"
-    """Retrieves metadata from a server. It only reads the headers and does not return the response body."""
+    """Retrieves metadata from a server.
+    It only reads the headers and does not return the response body."""
     OPTIONS = "OPTIONS"
-    """Provides information about the HTTP methods supported by a server. It can be used for Cross-Origin Resource Sharing (CORS) request."""
+    """Provides information about the HTTP methods supported by a server.
+    It can be used for Cross-Origin Resource Sharing (CORS) request."""
 
 
 @dataclass(frozen=True)
