@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal, Optional, Union, cast
+from typing import Any, Literal, cast
 
-from playwright.async_api import Browser, BrowserContext, Playwright, async_playwright
+from playwright.async_api import Browser, BrowserContext, Playwright, StorageState, async_playwright
 
 Engine = Literal["chromium", "firefox", "webkit", "camoufox"]
 PlaywrightEngine = Literal["chromium", "firefox", "webkit"]
@@ -224,7 +224,7 @@ class BrowserMaster:
     async def new_context(
         self,
         *,
-        storage_state: Optional[Union[dict[str, Any], str, Path]] = None,
+        storage_state: StorageState | str | Path | None = None,
     ) -> BrowserContext:
         """Создать одноразовый контекст. Гарантия: self._browser — это Browser."""
         await self.start()

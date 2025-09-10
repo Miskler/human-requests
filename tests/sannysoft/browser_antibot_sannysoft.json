@@ -14,7 +14,8 @@
       "unstable": []
     },
     "stealth": {
-      "stable": [],
+      "stable": ["WebGL Vendor",
+                 "WebGL Renderer"],
       "unstable": []
     },
     "fail_counts": {

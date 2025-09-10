@@ -3,6 +3,8 @@ from datetime import datetime
 from typing import Any, Iterable, Iterator, Literal, Mapping
 from urllib.parse import urlsplit
 
+from playwright.async_api import StorageStateCookie
+
 
 @dataclass
 class Cookie:
@@ -49,14 +51,14 @@ class Cookie:
         """This is the same as the `max_age` property but as a datetime object."""
         return datetime.fromtimestamp(self.max_age)
 
-    def to_playwright_like_dict(self) -> dict[str, str | int | bool | None]:
+    def to_playwright_like_dict(self) -> StorageStateCookie:
         """Return a dictionary compatible with Playwright StorageState cookies."""
         return {
             "name": self.name,
             "value": self.value,
-            "domain": self.domain or None,
+            "domain": self.domain or "",
             "path": self.path or "/",
-            "expires": int(self.expires or 0) or None,
+            "expires": float(self.expires or 0),
             "httpOnly": bool(self.http_only or False),
             "secure": bool(self.secure or False),
             "sameSite": self.same_site,
@@ -149,7 +151,7 @@ class CookieManager:
         return None
 
     # ────── Playwright helpers ──────
-    def to_playwright(self) -> list[dict[str, Any]]:
+    def to_playwright(self) -> list[StorageStateCookie]:
         """Сериализовать все куки в формат, понятный Playwright."""
         return [c.to_playwright_like_dict() for c in self.storage]
 

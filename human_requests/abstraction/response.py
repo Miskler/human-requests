@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import AsyncGenerator, Callable, Literal, Optional
+from typing import AsyncContextManager, Callable, Literal, Optional
 
 from playwright.async_api import Page
 
@@ -33,13 +33,13 @@ class Response:
     duration: float
     """The duration of the request in seconds."""
 
-    _render_callable: Optional[Callable[..., AsyncGenerator[Page, None]]] = None
+    _render_callable: Optional[Callable[..., AsyncContextManager[Page]]] = None
 
     def render(
         self,
         wait_until: Literal["commit", "load", "domcontentloaded", "networkidle"] = "commit",
         retry: int = 2,
-    ) -> AsyncGenerator[Page, None]:
+    ) -> AsyncContextManager[Page]:
         """Renders the response content in the current browser.
         It will look like we requested it through the browser from the beginning.
 

@@ -6,15 +6,16 @@ helper_tools — вспомогательные утилиты, не завис�
 - единый хендлер навигации с мягкими ретраями
 """
 
-from typing import Awaitable, Callable, Literal, Optional
+from typing import TYPE_CHECKING, Awaitable, Callable, Literal, Optional
 
-from playwright.async_api import (
-    BrowserContext,
-    Page,
-)
+from playwright.async_api import BrowserContext, Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
-from .abstraction.cookies import CookieManager
+if TYPE_CHECKING:
+    from playwright._impl._api_structures import LocalStorageEntry, OriginState
+    from playwright.async_api import StorageState, StorageStateCookie
+
+    from ..abstraction.cookies import CookieManager
 
 # Зависящие типы простые и стабильные — импортируем прямо.
 # CookieManager нужен только как протокол поведения (to_playwright/add_from_playwright).
@@ -23,29 +24,22 @@ from .abstraction.cookies import CookieManager
 def build_storage_state_for_context(
     *,
     local_storage: dict[str, dict[str, str]],
-    cookie_manager: CookieManager,
-) -> dict:
-    """
-    Собирает единый storage_state для new_context:
-    - cookies — из CookieManager (как playwright-совместимые dict)
-    - origins.localStorage — из local_storage (по origin)
-    """
-    cookie_list = cookie_manager.to_playwright()  # list[dict] совместимая с PW
-    origins = []
+    cookie_manager: "CookieManager",
+) -> "StorageState":
+    cookie_list: list["StorageStateCookie"] = cookie_manager.to_playwright()
+    origins: list["OriginState"] = []
+
     for origin, kv in local_storage.items():
         if not kv:
             continue
-        origins.append(
-            {
-                "origin": origin,
-                "localStorage": [{"name": k, "value": v} for k, v in kv.items()],
-            }
-        )
+        entries: list["LocalStorageEntry"] = [{"name": k, "value": v} for k, v in kv.items()]
+        origins.append({"origin": origin, "localStorage": entries})
+
     return {"cookies": cookie_list, "origins": origins}
 
 
 async def merge_storage_state_from_context(
-    ctx: BrowserContext, *, cookie_manager: CookieManager
+    ctx: BrowserContext, *, cookie_manager: "CookieManager"
 ) -> dict[str, dict[str, str]]:
     """
     Читает storage_state из контекста и синхронизирует внутреннее состояние:

@@ -35,12 +35,12 @@ from .abstraction.http import URL, HttpMethod
 from .abstraction.request import Request
 from .abstraction.response import Response
 from .browser_master import BrowserMaster
-from .helper_tools import (
+from .impersonation import ImpersonationConfig
+from .tools.helper_tools import (
     build_storage_state_for_context,
     handle_nav_with_retries,
     merge_storage_state_from_context,
 )
-from .impersonation import ImpersonationConfig
 from .tools.http_utils import (
     collect_set_cookie_headers,
     compose_cookie_header,
