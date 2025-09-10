@@ -14,6 +14,11 @@ RED = "ab-red"
 CHECK = "✅"
 CROSS = "❌"
 
+# Явно фиксируем группы и базовый порядок колонок:
+BASIC_BROWSERS_ORDER = ["firefox", "chromium", "webkit"]
+STEALTH_BROWSERS_ORDER = ["camoufox", "patchright"]
+STEALTH_SET = set(STEALTH_BROWSERS_ORDER)
+
 
 def _read_json(p: str) -> Dict[str, Any]:
     path = Path(p)
@@ -34,17 +39,15 @@ def _collect_all_props(matrix: Dict[str, Any]) -> List[str]:
             sec = br_data.get(section, {})
             for k in ("stable", "unstable"):
                 props.update(sec.get(k, []))
-    # если вдруг кто-то захочет использовать fail_counts для доп. источника
     return sorted(props)
 
 
-def _classify_cell(br_data: Dict[str, Any], prop: str) -> Tuple[str, str]:
+def _classify_cell_basic(br_data: Dict[str, Any], prop: str) -> Tuple[str, str]:
     """
-    Возвращает (html_text, css_class) для ячейки конкретного браузера и свойства.
-    Правила:
-      1) Если нигде не падало -> ✅ (зелёный фон)
-      2) Если падало только в base или только в stealth -> ❌ + '(base|stealth[, unstable])' (жёлтый фон)
-      3) Если падало везде (или поднято в all.*) -> ❌ [+ 'unstable' если применимо] (красный фон)
+    Классификация для базовых браузеров (firefox/chromium/webkit):
+      1) Нигде не падало -> ✅ (зелёный)
+      2) Падало только в base или только в stealth -> ❌ (+ пометка), жёлтый
+      3) Падало везде или отмечено в all.* -> ❌ [+ 'unstable' если нужно], красный
     """
     # all.*
     all_stable = set(br_data.get("all", {}).get("stable", []))
@@ -67,12 +70,10 @@ def _classify_cell(br_data: Dict[str, Any], prop: str) -> Tuple[str, str]:
         return f"{CHECK}", GREEN
 
     if base_failed and stealth_failed:
-        # теоретически не должно происходить (обычно переносится в all),
-        # но на всякий случай считаем "падало везде"
         tag = "unstable" if (prop in b_un or prop in s_un) else ""
         return f"{CROSS} {tag}".strip(), RED
 
-    # падало только в одном из режимов
+    # падало только в одном из режимов → partly (жёлтый)
     if base_failed:
         tag = "unstable" if prop in b_un else ""
         txt = f"{CROSS} base" + (f", {tag}" if tag else "")
@@ -83,20 +84,67 @@ def _classify_cell(br_data: Dict[str, Any], prop: str) -> Tuple[str, str]:
         return txt, YELLOW
 
 
-def _build_html_table(matrix: Dict[str, Any], title: str | None) -> str:
-    browsers = list(matrix.keys())
-    props = _collect_all_props(matrix)
-    # Если props пуст — ничего не валилось совсем; всё было зелёным. Покажем пустую таблицу с заглушкой?
-    if not props:
-        # посторим одно-зелёное поле «всё ок».
-        props = []
+def _classify_cell_stealth(br_data: Dict[str, Any], prop: str) -> Tuple[str, str]:
+    """
+    Классификация для стелс-браузеров (camoufox/patchright):
+    'partly' НЕ бывает — либо прошёл (зелёный), либо упал (красный).
+    Если есть 'unstable', помечаем текстом, но цвет остаётся красным.
+    """
+    # all.*
+    all_stable = set(br_data.get("all", {}).get("stable", []))
+    all_unstable = set(br_data.get("all", {}).get("unstable", []))
+    if prop in all_stable:
+        return f"{CROSS}", RED
+    if prop in all_unstable:
+        return f"{CROSS} unstable", RED
 
-    # Заголовок
+    # Любой фейл в base/stealth трактуем как "упал" (красный), без состояния partly.
+    b_st = set(br_data.get("base", {}).get("stable", []))
+    b_un = set(br_data.get("base", {}).get("unstable", []))
+    s_st = set(br_data.get("stealth", {}).get("stable", []))
+    s_un = set(br_data.get("stealth", {}).get("unstable", []))
+
+    failed_unstable = prop in b_un or prop in s_un
+    failed_any = (prop in b_st or prop in s_st or failed_unstable)
+
+    if failed_any:
+        return (f"{CROSS} unstable" if failed_unstable else f"{CROSS}"), RED
+
+    return f"{CHECK}", GREEN
+
+
+def _classify_cell(br_name: str, br_data: Dict[str, Any], prop: str) -> Tuple[str, str]:
+    if br_name in STEALTH_SET:
+        return _classify_cell_stealth(br_data, prop)
+    return _classify_cell_basic(br_data, prop)
+
+
+def _order_browsers(matrix: Dict[str, Any]) -> List[str]:
+    """
+    Возвращает список браузеров в порядке:
+      [BASIC...] + [STEALTH...] + [прочие, если вдруг встретятся]
+    Пропускает те, которых нет в данных.
+    """
+    present = set(matrix.keys())
+
+    basics = [b for b in BASIC_BROWSERS_ORDER if b in present]
+    stealths = [b for b in STEALTH_BROWSERS_ORDER if b in present]
+
+    known = set(basics + stealths)
+    others = sorted(present - known)  # детерминированность
+
+    return basics + stealths + others
+
+
+def _build_html_table(matrix: Dict[str, Any], title: str | None) -> str:
+    browsers = _order_browsers(matrix)
+    props = _collect_all_props(matrix)
+
     html = []
     if title:
         html.append(f'<h2 class="ab-title">{title}</h2>')
 
-    # Легенда (маленькая)
+    # Легенда
     html.append(
         '<div class="ab-legend">'
         f'<span class="ab-cell {GREEN}">{CHECK} ok</span>'
@@ -105,19 +153,36 @@ def _build_html_table(matrix: Dict[str, Any], title: str | None) -> str:
         "</div>"
     )
 
-    # Таблица
+    # Группы для шапки
+    basics = [b for b in browsers if b in BASIC_BROWSERS_ORDER]
+    stealths = [b for b in browsers if b in STEALTH_BROWSERS_ORDER]
+    others = [b for b in browsers if b not in BASIC_BROWSERS_ORDER + STEALTH_BROWSERS_ORDER]
+
     html.append('<table class="ab-table">')
 
-    # Заголовок таблицы
-    html.append("<thead><tr>")
+    # Первая строка шапки: групповые заголовки
+    html.append("<thead>")
+    html.append("<tr>")
+    html.append('<th class="ab-th ab-left"></th>')  # пустая левая верхняя ячейка
+    if basics:
+        html.append(f'<th class="ab-th" colspan="{len(basics)}">Basic Playwright</th>')
+    if stealths:
+        html.append(f'<th class="ab-th" colspan="{len(stealths)}">Stealth builds</th>')
+    if others:
+        html.append(f'<th class="ab-th" colspan="{len(others)}">Other</th>')
+    html.append("</tr>")
+
+    # Вторая строка шапки: конкретные браузеры
+    html.append("<tr>")
     html.append('<th class="ab-th ab-left"></th>')
     for br in browsers:
         html.append(f'<th class="ab-th">{br}</th>')
-    html.append("</tr></thead>")
+    html.append("</tr>")
+    html.append("</thead>")
 
+    # Тело таблицы
     html.append("<tbody>")
     if not props:
-        # нет падавших свойств — покажем одну строку-заглушку
         html.append('<tr><td class="ab-td ab-left">No failures — all checks are ok</td>')
         for _ in browsers:
             html.append(f'<td class="ab-td {GREEN}">{CHECK}</td>')
@@ -126,7 +191,7 @@ def _build_html_table(matrix: Dict[str, Any], title: str | None) -> str:
         for prop in props:
             html.append(f'<tr><td class="ab-td ab-left"><code>{prop}</code></td>')
             for br in browsers:
-                cell_txt, css = _classify_cell(matrix[br], prop)
+                cell_txt, css = _classify_cell(br, matrix[br], prop)
                 html.append(f'<td class="ab-td {css}">{cell_txt}</td>')
             html.append("</tr>")
 
