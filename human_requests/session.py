@@ -21,25 +21,40 @@ core.session — единая state-ful-сессия для *curl_cffi* и *Play
 
 from contextlib import asynccontextmanager
 from time import perf_counter
-from typing import AsyncGenerator, Literal, Mapping, Optional
+from typing import Any, AsyncGenerator, Literal, Mapping, Optional, cast
 from urllib.parse import urlsplit
 
 from curl_cffi import requests as cffi_requests
 from playwright.async_api import (
+    Browser,
+    BrowserContext,
     Page,
+    Playwright,
+)
+from playwright.async_api import Request as PWRequest
+from playwright.async_api import (
+    Route,
     async_playwright,
 )
+from playwright.async_api._context_manager import PlaywrightContextManager
 
 # ── опциональные импорты ──────────────────────────────────────────────────────
 try:
-    from playwright_stealth import Stealth
-except Exception:
+    from playwright_stealth import Stealth  # type: ignore[import-untyped]
+    from playwright_stealth.context_managers import (
+        AsyncWrappingContextManager as StealthContextManager  # type: ignore[import-untyped]
+    )
+except ImportError:  # пакет не установлен — используем заглушки типов/значений
     Stealth = None
+
+    class StealthContextManager:  # type: ignore[no-redef]
+        pass
+
 
 try:
     from camoufox.async_api import AsyncCamoufox
-except Exception:
-    AsyncCamoufox = None
+except ImportError:
+    AsyncCamoufox = None  # type: ignore[assignment]
 # ──────────────────────────────────────────────────────────────────────────────
 
 from .abstraction.cookies import CookieManager
@@ -82,7 +97,7 @@ class Session:
         Args:
             timeout: стандартный таймаут для direct и goto запросов
             headless: запускать ли только движок, или еще и рендер?
-            browser: "chromium", "firefox", "webkit" — стандартные браузеры, "camoufox" — спец. сборка firefox
+            browser: chromium/firefox/webkit — стандарт. браузеры, camoufox — спец. сборка firefox
             spoof: конфиг для direct-запросов
             playwright_stealth: прячет некоторые сигнатуры автоматизированного браузера
             page_retry: число «мягких» повторов навигации страницы (после первичной)
@@ -108,25 +123,23 @@ class Session:
         """Хранилище-синхронизатор кук"""
 
         # localStorage теперь по origin
-        # пример: {"https://example.com": {"k1": "v1", "k2": "v2"}}
         self.local_storage: dict[str, dict[str, str]] = {}
         """Хранилище-синхронизатор localStorage.
 
         sessionStorage сюда не входит, он удаляется сразу же после выхода из goto/render."""
 
         self._curl: Optional[cffi_requests.AsyncSession] = None
-        self._pw = None  # Playwright instance (или stealth-обёртка)
-        self._stealth_cm = None  # контекстный менеджер stealth
-        self._camoufox_cm = None  # контекстный менеджер Camoufox
-        self._browser = None
+        self._pw: Optional[Playwright] = None
+        self._stealth_cm: Optional[StealthContextManager] = None
+        self._camoufox_cm: Optional[PlaywrightContextManager] = None
+        self._browser: Optional[Browser] = None  # ← только Browser (не BrowserContext)
 
     # ────── lazy browser init (без контекста!) ──────
     async def _ensure_browser(self) -> None:
         # Playwright (с Stealth, если включён)
         if self._pw is None:
             if self.playwright_stealth:
-                # Явно ругаемся, если попросили stealth, а пакета нет
-                if self.playwright_stealth and Stealth is None:
+                if Stealth is None:
                     raise RuntimeError(
                         "Запрошен playwright_stealth=True, "
                         "но пакет 'playwright-stealth' не установлен.\n"
@@ -134,11 +147,10 @@ class Session:
                         "  pip install 'human-requests[stealth]'\n"
                         "или напрямую: pip install playwright-stealth"
                     )
-                # тут гарантировано, что Stealth установлен (см. __init__)
                 self._stealth_cm = Stealth().use_async(async_playwright())
                 self._pw = await self._stealth_cm.__aenter__()
             else:
-                self._pw = await async_playwright().start()
+                self._pw = await async_playwright().__aenter__()
 
         # Запуск браузера
         if self._browser is None:
@@ -151,9 +163,12 @@ class Session:
                         "или напрямую: pip install camoufox"
                     )
                 if self._camoufox_cm is None:
-                    self._camoufox_cm = AsyncCamoufox(headless=self.headless)
-                    self._browser = await self._camoufox_cm.__aenter__()
+                    self._camoufox_cm = AsyncCamoufox(headless=self.headless, persistent_context=False)
+                browser = await self._camoufox_cm.__aenter__()
+                assert isinstance(browser, Browser)
+                self._browser = browser
             else:
+                assert self._pw is not None
                 self._browser = await getattr(self._pw, self.browser_name).launch(
                     headless=self.headless
                 )
@@ -166,7 +181,7 @@ class Session:
         *,
         headers: Optional[Mapping[str, str]] = None,
         retry: int | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Response:
         """
         Обычный быстрый запрос через curl_cffi.
@@ -184,6 +199,9 @@ class Session:
         # lazy curl session
         if self._curl is None:
             self._curl = cffi_requests.AsyncSession()
+        
+        curl = self._curl
+        assert curl is not None  # для mypy: ниже уже не union
 
         # spoof UA / headers
         imper_profile = self.spoof.choose(self.browser_name)
@@ -200,15 +218,17 @@ class Session:
         attempts_left = self.direct_retry if retry is None else int(retry)
         last_err: Exception | None = None
 
-        async def _do_request() -> tuple:
+        async def _do_request() -> tuple[Any, float]:
             # Возвращаем (r, duration)
             req_headers = dict(base_headers)  # копия на попытку
             t0 = perf_counter()
-            r = await self._curl.request(
+            r = await curl.request(
                 method_enum.value,
                 url,
                 headers=req_headers,
-                impersonate=imper_profile,
+                impersonate=cast(  # сузить тип до Literal набора curl_cffi
+                    "cffi_requests.impersonate.BrowserTypeLiteral", imper_profile
+                ),
                 timeout=self.timeout,
                 **kwargs,
             )
@@ -279,6 +299,7 @@ class Session:
         Контекст одноразовый; повторы НЕ пересоздают контекст/страницу — «мягкий reload».
         """
         await self._ensure_browser()
+        assert self._browser is not None
 
         # создаём новый контекст с ЕДИНЫМ storage_state
         storage_state = build_storage_state_for_context(
@@ -324,12 +345,15 @@ class Session:
         на каждый повтор перевешиваем одноразовый route.
         """
         await self._ensure_browser()
+        assert self._browser is not None
 
         storage_state = build_storage_state_for_context(
             local_storage=self.local_storage,
             cookie_manager=self.cookies,
         )
-        ctx = await self._browser.new_context(storage_state=storage_state)
+        ctx: BrowserContext = await self._browser.new_context(
+            storage_state=cast(Any, storage_state)
+        )
 
         timeout_ms = int(self.timeout * 1000)
         attempts_left = self.page_retry if retry is None else int(retry)
@@ -338,7 +362,7 @@ class Session:
             # снимаем старые, чтобы гарантированно перевесить на повторе
             await ctx.unroute("**/*")
 
-            async def handler(route, _req) -> None:  # noqa: ANN001
+            async def handler(route: Route, _req: PWRequest) -> None:
                 await route.fulfill(
                     status=response.status_code,
                     headers=dict(response.headers),
@@ -387,8 +411,8 @@ class Session:
             if self._stealth_cm:  # использовали playwright-stealth
                 await self._stealth_cm.__aexit__(None, None, None)
                 self._stealth_cm = None
-            else:
-                await self._pw.stop()
+
+            await self._pw.__aexit__(None, None, None)
             self._pw = None
 
         if self._curl:

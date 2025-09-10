@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Iterable, Iterator, Literal
+from typing import Any, Iterable, Iterator, Literal, Mapping
 from urllib.parse import urlsplit
 
 
@@ -14,66 +14,43 @@ class Cookie:
     """
 
     name: str
-    """
-    This is the name of the cookie that will be used to identify the cookie in the Cookie header.
-    """
+    """This is the name of the cookie
+    that will be used to identify the cookie in the Cookie header."""
 
     value: str
-    """
-    This is the value that will be sent with the Cookie header.
-    """
+    """This is the value that will be sent with the Cookie header."""
 
     path: str = "/"
-    """
-    This is the path from which the cookie will be readable.
-    """
+    """This is the path from which the cookie will be readable."""
 
     domain: str = ""
-    """
-    This is the domain from which the cookie will be readable.
-    """
+    """This is the domain from which the cookie will be readable."""
 
     expires: int = 0
-    """
-    This is the date when the cookie will be deleted. Coded in Unix timestamp.
-    """
+    """This is the date when the cookie will be deleted. Coded in Unix timestamp."""
 
     max_age: int = 0
-    """
-    This is the maximum age of the cookie in seconds.
-    """
+    """This is the maximum age of the cookie in seconds."""
 
     same_site: Literal["Lax", "Strict", "None"] = "Lax"
-    """
-    This is the policy that determines whether the cookie
-    will be sent with requests that are "same-site".
-    """
+    """This is the policy that determines whether the cookie will be sent with requests."""
 
     secure: bool = False
-    """
-    This is whether the cookie will be sent over a secure connection.
-    """
+    """This is whether the cookie will be sent over a secure connection."""
 
     http_only: bool = False
-    """
-    This is whether the cookie will be accessible to JavaScript.
-    """
+    """This is whether the cookie will be accessible to JavaScript."""
 
     def expires_as_datetime(self) -> datetime:
-        """
-        This is the same as the `expires` property but as a datetime object.
-        """
+        """This is the same as the `expires` property but as a datetime object."""
         return datetime.fromtimestamp(self.expires)
 
     def max_age_as_datetime(self) -> datetime:
-        """
-        This is the same as the `max_age` property but as a datetime object.
-        """
+        """This is the same as the `max_age` property but as a datetime object."""
         return datetime.fromtimestamp(self.max_age)
 
     def to_playwright_like_dict(self) -> dict[str, str | int | bool | None]:
-        """This method returns a dictionary of the cookie in a format
-        that is compatible with Playwright."""
+        """Return a dictionary compatible with Playwright StorageState cookies."""
         return {
             "name": self.name,
             "value": self.value,
@@ -86,15 +63,16 @@ class Cookie:
         }
 
     @staticmethod
-    def from_playwright_like_dict(dict: dict[str, str | int | bool | None]) -> "Cookie":
+    def from_playwright_like_dict(data: Mapping[str, Any]) -> "Cookie":
+        """Accept any mapping (dict or Playwright's StorageStateCookie)."""
         return Cookie(
-            name=str(dict["name"]),
-            value=str(dict["value"]),
-            domain=str(dict.get("domain") or ""),
-            path=str(dict.get("path") or "/"),
-            expires=int(dict.get("expires") or 0),
-            secure=bool(dict.get("secure")),
-            http_only=bool(dict.get("httpOnly")),
+            name=str(data["name"]),
+            value=str(data["value"]),
+            domain=str(data.get("domain") or ""),
+            path=str(data.get("path") or "/"),
+            expires=int(data.get("expires") or 0),
+            secure=bool(data.get("secure")),
+            http_only=bool(data.get("httpOnly")),
         )
 
 
@@ -171,10 +149,10 @@ class CookieManager:
         return None
 
     # ────── Playwright helpers ──────
-    def to_playwright(self) -> list[dict]:
+    def to_playwright(self) -> list[dict[str, Any]]:
         """Сериализовать все куки в формат, понятный Playwright."""
         return [c.to_playwright_like_dict() for c in self.storage]
 
-    def add_from_playwright(self, raw_cookies: list[dict]) -> None:
-        """Обратная операция — добавить список сырых PW-кук в jar."""
+    def add_from_playwright(self, raw_cookies: Iterable[Mapping[str, Any]]) -> None:
+        """Обратная операция — добавить список PW-кук/маппингов в jar."""
         self.add(Cookie.from_playwright_like_dict(rc) for rc in raw_cookies)

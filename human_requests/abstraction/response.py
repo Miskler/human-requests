@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, Literal, Optional, AsyncGenerator
+from typing import AsyncGenerator, Callable, Literal, Optional
 
 from playwright.async_api import Page
 
@@ -33,7 +33,7 @@ class Response:
     duration: float
     """The duration of the request in seconds."""
 
-    _render_callable: Optional[Callable] = None
+    _render_callable: Optional[Callable[..., AsyncGenerator[Page, None]]] = None
 
     def render(
         self,
@@ -44,8 +44,6 @@ class Response:
         It will look like we requested it through the browser from the beginning.
 
         Recommended to use in cases when the server returns a JS challenge instead of a response."""
-
         if self._render_callable:
             return self._render_callable(self, wait_until=wait_until, retry=retry)
-        else:
-            raise ValueError("Not set render callable for Response")
+        raise ValueError("Not set render callable for Response")
