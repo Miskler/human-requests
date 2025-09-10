@@ -24,9 +24,9 @@ class BrowserMaster:
         stealth: bool = False,
     ) -> None:
         # желаемая конфигурация
-        self._engine: Engine = engine
-        self._headless: bool = headless
-        self._stealth_flag: bool = stealth
+        self.engine = engine
+        self.headless = headless
+        self.stealth = stealth
 
         # текущее состояние (кэш)
         self._family_used: Literal["playwright", "camoufox"] | None = None
@@ -52,7 +52,7 @@ class BrowserMaster:
 
     @engine.setter
     def engine(self, value: Engine) -> None:
-        self._engine = value
+        self._engine: Engine = value
 
     @property
     def headless(self) -> bool:
@@ -60,7 +60,7 @@ class BrowserMaster:
 
     @headless.setter
     def headless(self, value: bool) -> None:
-        self._headless = bool(value)
+        self._headless: bool = bool(value)
 
     @property
     def stealth(self) -> bool:
@@ -68,14 +68,15 @@ class BrowserMaster:
 
     @stealth.setter
     def stealth(self, value: bool) -> None:
-        self._stealth_flag = bool(value)
+        self._stealth_flag: bool = bool(value)
 
     # ────────────────────────────── жизненный цикл ───────────────────────────
 
     async def start(self) -> None:
         """
         Идемпотентный запуск:
-        - если семья меняется (camoufox ↔ playwright) — селективно закрываем старую и поднимаем новую;
+        - если семья меняется (camoufox ↔ playwright) — селективно закрываем старую
+          и поднимаем новую;
         - в PW ветке: смена stealth → пересоздаём PW-движок + браузер;
           смена engine/headless → перелончим только браузер;
         - в camoufox ветке: смена headless → перелончим camoufox стек.
@@ -180,7 +181,8 @@ class BrowserMaster:
         """
         Селективное закрытие стеков.
         - camoufox=True: закрывает Browser (если активная семья camoufox) и camoufox CM.
-        - playwright=True: закрывает Browser (если активная семья playwright), затем PW (stop) и stealth CM.
+        - playwright=True: закрывает Browser (если активная семья playwright),
+          затем PW (stop) и stealth CM.
         """
         # Сначала закрываем Browser, чтобы не оставлять детей движка.
         if self._browser is not None:

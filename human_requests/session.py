@@ -25,7 +25,9 @@ from typing import Any, AsyncGenerator, Literal, Mapping, Optional, cast
 from urllib.parse import urlsplit
 
 from curl_cffi import requests as cffi_requests
-from playwright.async_api import BrowserContext, Page, Request as PWRequest, Route
+from playwright.async_api import BrowserContext, Page
+from playwright.async_api import Request as PWRequest
+from playwright.async_api import Route
 
 from .abstraction.cookies import CookieManager
 from .abstraction.http import URL, HttpMethod
@@ -298,6 +300,7 @@ class Session:
         page = await ctx.new_page()
 
         try:
+
             async def _on_retry() -> None:
                 await _attach_route_once()
 
