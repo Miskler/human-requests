@@ -21,6 +21,7 @@ core.session — единая state-ful-сессия для *curl_cffi* и *Play
 
 from contextlib import asynccontextmanager
 from time import perf_counter
+from types import TracebackType
 from typing import Any, AsyncGenerator, Literal, Mapping, Optional, cast
 from urllib.parse import urlsplit
 
@@ -333,5 +334,10 @@ class Session:
     async def __aenter__(self) -> "Session":
         return self
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc: Optional[BaseException],
+        tb: Optional[TracebackType],
+    ) -> None:
         await self.close()
