@@ -1,10 +1,11 @@
 {
   "firefox": {
     "all": {
-      "stable": [],
-      "unstable": [
-        "Broken Image Dimensions"
-      ]
+      "stable": [
+        "WebGL Renderer",
+        "WebGL Vendor"
+      ],
+      "unstable": []
     },
     "base": {
       "stable": [
@@ -27,55 +28,73 @@
           "Plugins Length(Old)": 4,
           "Plugins is of type PluginArray": 4,
           "WebDriver(New)": 4,
-          "Broken Image Dimensions": 2
+          "WebGL Renderer": 4,
+          "WebGL Vendor": 4
         },
         "modes": {
           "goto": {
             "Chrome(New)": 2,
             "Plugins Length(Old)": 2,
             "Plugins is of type PluginArray": 2,
-            "WebDriver(New)": 2
+            "WebDriver(New)": 2,
+            "WebGL Renderer": 2,
+            "WebGL Vendor": 2
           },
           "render": {
-            "Broken Image Dimensions": 2,
             "Chrome(New)": 2,
             "Plugins Length(Old)": 2,
             "Plugins is of type PluginArray": 2,
-            "WebDriver(New)": 2
+            "WebDriver(New)": 2,
+            "WebGL Renderer": 2,
+            "WebGL Vendor": 2
           }
         }
       },
       "stealth": {
         "attempts": 4,
         "total": {
-          "Broken Image Dimensions": 2
+          "WebGL Renderer": 4,
+          "WebGL Vendor": 4
         },
         "modes": {
-          "goto": {},
+          "goto": {
+            "WebGL Renderer": 2,
+            "WebGL Vendor": 2
+          },
           "render": {
-            "Broken Image Dimensions": 2
+            "WebGL Renderer": 2,
+            "WebGL Vendor": 2
           }
         }
       }
     },
     "timings": {
-      "average_time_response": 8.37393753462311,
-      "minimum_time_response": 5.66668572499475,
-      "maximum_time_response": 11.210725929995533,
+      "average_time_response": 2.326943110374984,
+      "minimum_time_response": 1.9776132110000049,
+      "maximum_time_response": 3.0132783579999796,
       "unit": "seconds"
     }
   },
   "chromium": {
     "all": {
       "stable": [],
-      "unstable": [
-        "Broken Image Dimensions"
-      ]
+      "unstable": []
     },
     "base": {
       "stable": [
-        "VIDEO_CODECS",
-        "WebDriver(New)"
+        "CHR_MEMORY",
+        "Chrome(New)",
+        "HEADCHR_CHROME_OBJ",
+        "HEADCHR_IFRAME",
+        "HEADCHR_PERMISSIONS",
+        "HEADCHR_PLUGINS",
+        "HEADCHR_UA",
+        "Permissions(New)",
+        "Plugins Length(Old)",
+        "Plugins is of type PluginArray",
+        "User Agent(Old)",
+        "WebDriver(New)",
+        "WebGL Renderer"
       ],
       "unstable": []
     },
@@ -87,48 +106,73 @@
       "base": {
         "attempts": 4,
         "total": {
-          "VIDEO_CODECS": 4,
+          "CHR_MEMORY": 4,
+          "Chrome(New)": 4,
+          "HEADCHR_CHROME_OBJ": 4,
+          "HEADCHR_IFRAME": 4,
+          "HEADCHR_PERMISSIONS": 4,
+          "HEADCHR_PLUGINS": 4,
+          "HEADCHR_UA": 4,
+          "Permissions(New)": 4,
+          "Plugins Length(Old)": 4,
+          "Plugins is of type PluginArray": 4,
+          "User Agent(Old)": 4,
           "WebDriver(New)": 4,
-          "Broken Image Dimensions": 2
+          "WebGL Renderer": 4
         },
         "modes": {
           "goto": {
-            "VIDEO_CODECS": 2,
-            "WebDriver(New)": 2
+            "CHR_MEMORY": 2,
+            "Chrome(New)": 2,
+            "HEADCHR_CHROME_OBJ": 2,
+            "HEADCHR_IFRAME": 2,
+            "HEADCHR_PERMISSIONS": 2,
+            "HEADCHR_PLUGINS": 2,
+            "HEADCHR_UA": 2,
+            "Permissions(New)": 2,
+            "Plugins Length(Old)": 2,
+            "Plugins is of type PluginArray": 2,
+            "User Agent(Old)": 2,
+            "WebDriver(New)": 2,
+            "WebGL Renderer": 2
           },
           "render": {
-            "Broken Image Dimensions": 2,
-            "VIDEO_CODECS": 2,
-            "WebDriver(New)": 2
+            "CHR_MEMORY": 2,
+            "Chrome(New)": 2,
+            "HEADCHR_CHROME_OBJ": 2,
+            "HEADCHR_IFRAME": 2,
+            "HEADCHR_PERMISSIONS": 2,
+            "HEADCHR_PLUGINS": 2,
+            "HEADCHR_UA": 2,
+            "Permissions(New)": 2,
+            "Plugins Length(Old)": 2,
+            "Plugins is of type PluginArray": 2,
+            "User Agent(Old)": 2,
+            "WebDriver(New)": 2,
+            "WebGL Renderer": 2
           }
         }
       },
       "stealth": {
         "attempts": 4,
-        "total": {
-          "Broken Image Dimensions": 2
-        },
+        "total": {},
         "modes": {
           "goto": {},
-          "render": {
-            "Broken Image Dimensions": 2
-          }
+          "render": {}
         }
       }
     },
     "timings": {
-      "average_time_response": 6.077010113000142,
-      "minimum_time_response": 3.632809068003553,
-      "maximum_time_response": 18.047962527998607,
+      "average_time_response": 1.6560208793750064,
+      "minimum_time_response": 0.9606275369999935,
+      "maximum_time_response": 2.9714182690000257,
       "unit": "seconds"
     }
   },
   "webkit": {
     "all": {
       "stable": [],
-      "unstable": [
-        "Broken Image Dimensions"
-      ]
+      "unstable": []
     },
     "base": {
       "stable": [
@@ -146,8 +190,7 @@
         "attempts": 4,
         "total": {
           "Chrome(New)": 4,
-          "WebDriver(New)": 4,
-          "Broken Image Dimensions": 2
+          "WebDriver(New)": 4
         },
         "modes": {
           "goto": {
@@ -155,7 +198,6 @@
             "WebDriver(New)": 2
           },
           "render": {
-            "Broken Image Dimensions": 2,
             "Chrome(New)": 2,
             "WebDriver(New)": 2
           }
@@ -163,21 +205,17 @@
       },
       "stealth": {
         "attempts": 4,
-        "total": {
-          "Broken Image Dimensions": 2
-        },
+        "total": {},
         "modes": {
           "goto": {},
-          "render": {
-            "Broken Image Dimensions": 2
-          }
+          "render": {}
         }
       }
     },
     "timings": {
-      "average_time_response": 5.015014558252005,
-      "minimum_time_response": 3.2599704320018645,
-      "maximum_time_response": 5.948324433004018,
+      "average_time_response": 2.337090550125012,
+      "minimum_time_response": 1.1465233320000152,
+      "maximum_time_response": 7.783290737000016,
       "unit": "seconds"
     }
   },
@@ -188,11 +226,11 @@
     },
     "base": {
       "stable": [
-        "Chrome(New)"
+        "Chrome(New)",
+        "WebGL Renderer",
+        "WebGL Vendor"
       ],
-      "unstable": [
-        "Broken Image Dimensions"
-      ]
+      "unstable": []
     },
     "stealth": {
       "stable": [],
@@ -203,15 +241,19 @@
         "attempts": 4,
         "total": {
           "Chrome(New)": 4,
-          "Broken Image Dimensions": 2
+          "WebGL Renderer": 4,
+          "WebGL Vendor": 4
         },
         "modes": {
           "goto": {
-            "Chrome(New)": 2
+            "Chrome(New)": 2,
+            "WebGL Renderer": 2,
+            "WebGL Vendor": 2
           },
           "render": {
-            "Broken Image Dimensions": 2,
-            "Chrome(New)": 2
+            "Chrome(New)": 2,
+            "WebGL Renderer": 2,
+            "WebGL Vendor": 2
           }
         }
       },
@@ -225,9 +267,9 @@
       }
     },
     "timings": {
-      "average_time_response": 11.463265123747988,
-      "minimum_time_response": 7.2918833369913045,
-      "maximum_time_response": 17.730024250995484,
+      "average_time_response": 5.541934270499993,
+      "minimum_time_response": 2.070684770000014,
+      "maximum_time_response": 15.14891966099998,
       "unit": "seconds"
     }
   },
@@ -238,11 +280,20 @@
     },
     "base": {
       "stable": [
-        "VIDEO_CODECS"
+        "CHR_MEMORY",
+        "Chrome(New)",
+        "HEADCHR_CHROME_OBJ",
+        "HEADCHR_IFRAME",
+        "HEADCHR_PERMISSIONS",
+        "HEADCHR_PLUGINS",
+        "HEADCHR_UA",
+        "Permissions(New)",
+        "Plugins Length(Old)",
+        "Plugins is of type PluginArray",
+        "User Agent(Old)",
+        "WebGL Renderer"
       ],
-      "unstable": [
-        "Broken Image Dimensions"
-      ]
+      "unstable": []
     },
     "stealth": {
       "stable": [],
@@ -252,16 +303,47 @@
       "base": {
         "attempts": 4,
         "total": {
-          "VIDEO_CODECS": 4,
-          "Broken Image Dimensions": 2
+          "CHR_MEMORY": 4,
+          "Chrome(New)": 4,
+          "HEADCHR_CHROME_OBJ": 4,
+          "HEADCHR_IFRAME": 4,
+          "HEADCHR_PERMISSIONS": 4,
+          "HEADCHR_PLUGINS": 4,
+          "HEADCHR_UA": 4,
+          "Permissions(New)": 4,
+          "Plugins Length(Old)": 4,
+          "Plugins is of type PluginArray": 4,
+          "User Agent(Old)": 4,
+          "WebGL Renderer": 4
         },
         "modes": {
           "goto": {
-            "VIDEO_CODECS": 2
+            "CHR_MEMORY": 2,
+            "Chrome(New)": 2,
+            "HEADCHR_CHROME_OBJ": 2,
+            "HEADCHR_IFRAME": 2,
+            "HEADCHR_PERMISSIONS": 2,
+            "HEADCHR_PLUGINS": 2,
+            "HEADCHR_UA": 2,
+            "Permissions(New)": 2,
+            "Plugins Length(Old)": 2,
+            "Plugins is of type PluginArray": 2,
+            "User Agent(Old)": 2,
+            "WebGL Renderer": 2
           },
           "render": {
-            "Broken Image Dimensions": 2,
-            "VIDEO_CODECS": 2
+            "CHR_MEMORY": 2,
+            "Chrome(New)": 2,
+            "HEADCHR_CHROME_OBJ": 2,
+            "HEADCHR_IFRAME": 2,
+            "HEADCHR_PERMISSIONS": 2,
+            "HEADCHR_PLUGINS": 2,
+            "HEADCHR_UA": 2,
+            "Permissions(New)": 2,
+            "Plugins Length(Old)": 2,
+            "Plugins is of type PluginArray": 2,
+            "User Agent(Old)": 2,
+            "WebGL Renderer": 2
           }
         }
       },
@@ -275,9 +357,9 @@
       }
     },
     "timings": {
-      "average_time_response": 5.024329717249202,
-      "minimum_time_response": 3.6901202379958704,
-      "maximum_time_response": 6.336405352994916,
+      "average_time_response": 1.6319336094999954,
+      "minimum_time_response": 0.9261564669999984,
+      "maximum_time_response": 2.7137648979999653,
       "unit": "seconds"
     }
   }
