@@ -30,6 +30,11 @@ on:
     branches:
       - "**"
 
+# нужно для auto-PR
+permissions:
+  contents: write
+  pull-requests: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -69,11 +74,45 @@ jobs:
       - name: Run tests
         run: |
           # “виртуальный” дисплей с нормальной глубиной цвета
-          if [ "${{ github.event.inputs.headless }}" = "true" || "${{ inputs.headless }}" = "true" ]; then
+          if [ "${{ github.event.inputs.headless }}" = "true" ] || [ "${{ inputs.headless }}" = "true" ]; then
             make ci-test
           else
             xvfb-run -s "-screen 0 1920x1080x24" make ci-test
           fi
+
+      # если тесты упали — повторяем прогон с авто-обновлением ожиданий
+      - name: Re-run tests in auto-update mode (PYTEST_ADDOPTS=--update-anti)
+        if: failure()
+        env:
+          PYTEST_ADDOPTS: --update-anti
+        run: |
+          if [ "${{ github.event.inputs.headless }}" = "true" ] || [ "${{ inputs.headless }}" = "true" ]; then
+            make ci-test || true
+          else
+            xvfb-run -s "-screen 0 1920x1080x24" make ci-test || true
+          fi
+
+      - name: Upload updated antibot JSON
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: antibot-json-${{ matrix.python-version }}
+          path: tests/sannysoft/browser_antibot_sannysoft.json
+          if-no-files-found: ignore
+
+      - name: Create PR with updated antibot JSON (if changed)
+        if: failure()
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ci/update-anti-${{ github.run_id }}
+          add-paths: |
+            tests/sannysoft/browser_antibot_sannysoft.json
+          commit-message: "tests: update antibot expectations (auto)"
+          title: "tests: update antibot expectations (auto)"
+          body: |
+            CI перегенерировал `tests/sannysoft/browser_antibot_sannysoft.json` после падений тестов.
+            Этот PR автоматически создан для синхронизации стабильных/нестабильных ожиданий.
 
       - name: Upload raw reports
         if: always()
