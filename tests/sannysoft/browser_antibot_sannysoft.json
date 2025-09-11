@@ -1,11 +1,11 @@
 {
   "firefox": {
     "all": {
-      "stable": [
+      "stable": [],
+      "unstable": [
         "WebGL Renderer",
         "WebGL Vendor"
-      ],
-      "unstable": []
+      ]
     },
     "base": {
       "stable": [
@@ -14,7 +14,10 @@
         "Plugins is of type PluginArray",
         "WebDriver(New)"
       ],
-      "unstable": []
+      "unstable": [
+        "WebGL Renderer",
+        "WebGL Vendor"
+      ]
     },
     "stealth": {
       "stable": [],
@@ -78,10 +81,7 @@
   "chromium": {
     "all": {
       "stable": [],
-      "unstable": []
-    },
-    "base": {
-      "stable": [
+      "unstable": [
         "CHR_MEMORY",
         "Chrome(New)",
         "HEADCHR_CHROME_OBJ",
@@ -93,14 +93,34 @@
         "Plugins Length(Old)",
         "Plugins is of type PluginArray",
         "User Agent(Old)",
+        "VIDEO_CODECS"
+      ]
+    },
+    "base": {
+      "stable": [
         "WebDriver(New)",
-        "WebGL Renderer"
+        "WebGL Renderer",
+        "VIDEO_CODECS"
       ],
-      "unstable": []
+      "unstable": [
+        "CHR_MEMORY",
+        "Chrome(New)",
+        "HEADCHR_CHROME_OBJ",
+        "HEADCHR_IFRAME",
+        "HEADCHR_PERMISSIONS",
+        "HEADCHR_PLUGINS",
+        "HEADCHR_UA",
+        "Permissions(New)",
+        "Plugins Length(Old)",
+        "Plugins is of type PluginArray",
+        "User Agent(Old)"
+      ]
     },
     "stealth": {
       "stable": [],
-      "unstable": []
+      "unstable": [
+        "VIDEO_CODECS"
+      ]
     },
     "fail_counts": {
       "base": {
@@ -222,15 +242,19 @@
   "camoufox": {
     "all": {
       "stable": [],
-      "unstable": []
+      "unstable": [
+        "WebGL Renderer",
+        "WebGL Vendor"
+      ]
     },
     "base": {
       "stable": [
-        "Chrome(New)",
+        "Chrome(New)"
+      ],
+      "unstable": [
         "WebGL Renderer",
         "WebGL Vendor"
-      ],
-      "unstable": []
+      ]
     },
     "stealth": {
       "stable": [],
@@ -275,11 +299,10 @@
   },
   "patchright": {
     "all": {
-      "stable": [],
-      "unstable": []
-    },
-    "base": {
       "stable": [
+        "VIDEO_CODECS"
+      ],
+      "unstable": [
         "CHR_MEMORY",
         "Chrome(New)",
         "HEADCHR_CHROME_OBJ",
@@ -290,10 +313,27 @@
         "Permissions(New)",
         "Plugins Length(Old)",
         "Plugins is of type PluginArray",
-        "User Agent(Old)",
-        "WebGL Renderer"
+        "User Agent(Old)"
+      ]
+    },
+    "base": {
+      "stable": [
+        "WebGL Renderer",
+        "VIDEO_CODECS"
       ],
-      "unstable": []
+      "unstable": [
+        "CHR_MEMORY",
+        "Chrome(New)",
+        "HEADCHR_CHROME_OBJ",
+        "HEADCHR_IFRAME",
+        "HEADCHR_PERMISSIONS",
+        "HEADCHR_PLUGINS",
+        "HEADCHR_UA",
+        "Permissions(New)",
+        "Plugins Length(Old)",
+        "Plugins is of type PluginArray",
+        "User Agent(Old)"
+      ]
     },
     "stealth": {
       "stable": [],
