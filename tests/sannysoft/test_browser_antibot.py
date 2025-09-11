@@ -19,7 +19,7 @@ from tests.sannysoft.tool import (
 
 HEADLESS = os.getenv("HEADLESS", "1") == "0"
 SANNY_URL = os.getenv("SANNYSOFT_URL", "https://bot.sannysoft.com/")
-TIMEOUT_MS = int(os.getenv("SANNY_TIMEOUT_MS", "30000"))      # подняли таймаут до 30s по умолчанию
+TIMEOUT_MS = int(os.getenv("SANNY_TIMEOUT_MS", "30000"))  # подняли таймаут до 30s по умолчанию
 MAX_ATTEMPTS = int(os.getenv("SANNY_MAX_ATTEMPTS", "3"))
 
 BROWSERS = [
@@ -76,7 +76,9 @@ def _matrix():
 
 @pytest.mark.parametrize("browser,stealth,mode", list(_matrix()))
 @pytest.mark.asyncio
-async def test_antibot_matrix(browser: str, stealth: str, mode: str, request: pytest.FixtureRequest):
+async def test_antibot_matrix(
+    browser: str, stealth: str, mode: str, request: pytest.FixtureRequest
+):
     if browser in BROWSERS_UNSUPPORT_STEALTH and stealth == "stealth":
         pytest.skip(f"playwright_stealth=True is incompatible with browser='{browser}'")
 
@@ -91,9 +93,13 @@ async def test_antibot_matrix(browser: str, stealth: str, mode: str, request: py
 
     try:
         if mode == "goto":
-            html = await html_via_goto(session, SANNY_URL, timeout_ms=TIMEOUT_MS, max_attempts=MAX_ATTEMPTS)
+            html = await html_via_goto(
+                session, SANNY_URL, timeout_ms=TIMEOUT_MS, max_attempts=MAX_ATTEMPTS
+            )
         elif mode == "render":
-            html = await html_via_render(session, SANNY_URL, timeout_ms=TIMEOUT_MS, max_attempts=MAX_ATTEMPTS)
+            html = await html_via_render(
+                session, SANNY_URL, timeout_ms=TIMEOUT_MS, max_attempts=MAX_ATTEMPTS
+            )
         else:
             pytest.skip(f"unknown mode: {mode}")
     finally:
@@ -127,11 +133,15 @@ async def test_antibot_matrix(browser: str, stealth: str, mode: str, request: py
                     lst_unst.append(key)
 
         for key in sorted(new_unexpected):
-            if key not in ANTI_ERROR[browser][branch]["stable"] and \
-               key not in ANTI_ERROR[browser][branch]["unstable"]:
+            if (
+                key not in ANTI_ERROR[browser][branch]["stable"]
+                and key not in ANTI_ERROR[browser][branch]["unstable"]
+            ):
                 ANTI_ERROR[browser][branch]["stable"].append(key)
-            if key not in ANTI_ERROR[browser]["all"]["stable"] and \
-               key not in ANTI_ERROR[browser]["all"]["unstable"]:
+            if (
+                key not in ANTI_ERROR[browser]["all"]["stable"]
+                and key not in ANTI_ERROR[browser]["all"]["unstable"]
+            ):
                 ANTI_ERROR[browser]["all"]["stable"].append(key)
 
         ANTI_PATH.parent.mkdir(parents=True, exist_ok=True)
