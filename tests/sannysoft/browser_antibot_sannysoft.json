@@ -14,10 +14,7 @@
         "Plugins is of type PluginArray",
         "WebDriver(New)"
       ],
-      "unstable": [
-        "WebGL Renderer",
-        "WebGL Vendor"
-      ]
+      "unstable": []
     },
     "stealth": {
       "stable": [],
@@ -252,8 +249,7 @@
         "Chrome(New)"
       ],
       "unstable": [
-        "WebGL Renderer",
-        "WebGL Vendor"
+        "Broken Image Dimensions"
       ]
     },
     "stealth": {
