@@ -106,7 +106,6 @@ class Session:
         # Браузерный движок — через мастер (всегда отдаёт Browser)
         self._bm: BrowserMaster = BrowserMaster(
             engine=self.browser_name,
-            headless=self.headless,
             stealth=self.playwright_stealth,
         )
 

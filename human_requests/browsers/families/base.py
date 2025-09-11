@@ -20,13 +20,11 @@ class DesiredConfig:
         *,
         family: Family,
         engine: PlaywrightEngine | None,
-        headless: bool,
         stealth: bool,
         launch_opts: Dict[str, Any],
     ) -> None:
         self.family = family
         self.engine = engine
-        self.headless = headless
         self.stealth = stealth
         self.launch_opts = dict(launch_opts)  # копия
 

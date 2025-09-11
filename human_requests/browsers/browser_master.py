@@ -21,12 +21,10 @@ class BrowserMaster:
         self,
         *,
         engine: Engine = "chromium",
-        headless: bool = True,
         stealth: bool = False,
         launch_opts: Dict[str, Any] | None = None,
     ) -> None:
         self._engine: Engine = engine
-        self._headless: bool = headless
         self._stealth_flag: bool = stealth
         self.launch_opts = launch_opts or {}  # через сеттер ниже
 
@@ -46,14 +44,6 @@ class BrowserMaster:
         self._validate_compat()
 
     @property
-    def headless(self) -> bool:
-        return self._headless
-
-    @headless.setter
-    def headless(self, value: bool) -> None:
-        self._headless = bool(value)
-
-    @property
     def stealth(self) -> bool:
         return self._stealth_flag
 
@@ -69,7 +59,6 @@ class BrowserMaster:
     @launch_opts.setter
     def launch_opts(self, value: Dict[str, Any] | None) -> None:
         opts = dict(value or {})
-        opts.pop("headless", None)
         self._launch_opts = opts
 
     # ─────────────────────────── публичные методы ───────────────────────────
@@ -89,7 +78,6 @@ class BrowserMaster:
         cfg = DesiredConfig(
             family=fam.name,
             engine=eng,
-            headless=self._headless,
             stealth=self._stealth_flag,
             launch_opts=self._launch_opts,
         )

@@ -21,7 +21,6 @@ class PlaywrightFamily(BrowserFamily):
 
         # кэш использованных опций
         self._engine_used: PlaywrightEngine | None = None
-        self._headless_used: bool | None = None
         self._stealth_used: bool | None = None
         self._launch_opts_used: Dict[str, Any] | None = None
 
@@ -61,7 +60,6 @@ class PlaywrightFamily(BrowserFamily):
             need_pw_restart
             or self._browser is None
             or self._engine_used != cfg.engine
-            or self._headless_used != cfg.headless
             or self._launch_opts_used != cfg.launch_opts
         )
         if need_browser_relaunch:
@@ -73,12 +71,10 @@ class PlaywrightFamily(BrowserFamily):
             launcher = getattr(self._pw, cfg.engine)
 
             kwargs = dict(cfg.launch_opts)
-            kwargs.pop("headless", None)
-            self._browser = await launcher.launch(headless=cfg.headless, **kwargs)
+            self._browser = await launcher.launch(**kwargs)
 
         # обновить кэш
         self._engine_used = cfg.engine
-        self._headless_used = cfg.headless
         self._stealth_used = cfg.stealth
         self._launch_opts_used = dict(cfg.launch_opts)
 
@@ -92,7 +88,6 @@ class PlaywrightFamily(BrowserFamily):
 
         # сброс кэша
         self._engine_used = None
-        self._headless_used = None
         self._stealth_used = None
         self._launch_opts_used = None
 

@@ -18,7 +18,6 @@ class PatchrightFamily(BrowserFamily):
         self._browser: Any | None = None
 
         # кэш
-        self._headless_used: bool | None = None
         self._launch_opts_used: Dict[str, Any] | None = None
 
     @property
@@ -37,7 +36,6 @@ class PatchrightFamily(BrowserFamily):
         need_relaunch = (
             self._pw is None
             or self._browser is None
-            or self._headless_used != cfg.headless
             or self._launch_opts_used != cfg.launch_opts
         )
         if need_relaunch:
@@ -55,10 +53,8 @@ class PatchrightFamily(BrowserFamily):
             launcher = self._pw.chromium
 
             kwargs = dict(cfg.launch_opts)
-            kwargs.pop("headless", None)
-            self._browser = await launcher.launch(headless=cfg.headless, **kwargs)
+            self._browser = await launcher.launch(**kwargs)
 
-        self._headless_used = cfg.headless
         self._launch_opts_used = dict(cfg.launch_opts)
 
     async def close(self) -> None:
@@ -69,5 +65,4 @@ class PatchrightFamily(BrowserFamily):
             await self._pw.stop()
             self._pw = None
 
-        self._headless_used = None
         self._launch_opts_used = None

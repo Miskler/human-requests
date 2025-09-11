@@ -18,7 +18,6 @@ class CamoufoxFamily(BrowserFamily):
         self._browser: Browser | None = None
 
         # кэш
-        self._headless_used: bool | None = None
         self._launch_opts_used: Dict[str, Any] | None = None
 
     @property
@@ -37,7 +36,6 @@ class CamoufoxFamily(BrowserFamily):
         need_relaunch = (
             self._cm is None
             or self._browser is None
-            or self._headless_used != cfg.headless
             or self._launch_opts_used != cfg.launch_opts
         )
         if need_relaunch:
@@ -52,9 +50,8 @@ class CamoufoxFamily(BrowserFamily):
                 )
 
             kwargs = dict(cfg.launch_opts)
-            kwargs.pop("headless", None)
             kwargs["persistent_context"] = False  # гарантируем неперсистентный режим
-            self._cm = AsyncCamoufoxRT(headless=cfg.headless, **kwargs)
+            self._cm = AsyncCamoufoxRT(**kwargs)
             browser_obj = await self._cm.__aenter__()
             if not isinstance(browser_obj, Browser):
                 raise RuntimeError("Camoufox вернул не Browser в неперсистентном режиме.")
@@ -71,5 +68,4 @@ class CamoufoxFamily(BrowserFamily):
             await self._cm.__aexit__(None, None, None)
             self._cm = None
 
-        self._headless_used = None
         self._launch_opts_used = None
