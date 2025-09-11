@@ -34,7 +34,7 @@ from .abstraction.cookies import CookieManager
 from .abstraction.http import URL, HttpMethod
 from .abstraction.request import Request
 from .abstraction.response import Response
-from .browser_master import BrowserMaster, Engine
+from .browsers import BrowserMaster, Engine
 from .impersonation import ImpersonationConfig
 from .tools.helper_tools import (
     build_storage_state_for_context,
