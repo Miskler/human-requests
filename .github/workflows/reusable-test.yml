@@ -32,8 +32,7 @@ on:
 
 # нужно для auto-PR
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -99,20 +98,6 @@ jobs:
           name: antibot-json-${{ matrix.python-version }}
           path: tests/sannysoft/browser_antibot_sannysoft.json
           if-no-files-found: ignore
-
-      - name: Create PR with updated antibot JSON (if changed)
-        if: failure()
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ci/update-anti-${{ github.run_id }}
-          add-paths: |
-            tests/sannysoft/browser_antibot_sannysoft.json
-          commit-message: "tests: update antibot expectations (auto)"
-          title: "tests: update antibot expectations (auto)"
-          body: |
-            CI перегенерировал `tests/sannysoft/browser_antibot_sannysoft.json` после падений тестов.
-            Этот PR автоматически создан для синхронизации стабильных/нестабильных ожиданий.
 
       - name: Upload raw reports
         if: always()
