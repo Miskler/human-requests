@@ -34,9 +34,7 @@ class CamoufoxFamily(BrowserFamily):
             raise RuntimeError("stealth несовместим с engine='camoufox'.")
 
         need_relaunch = (
-            self._cm is None
-            or self._browser is None
-            or self._launch_opts_used != cfg.launch_opts
+            self._cm is None or self._browser is None or self._launch_opts_used != cfg.launch_opts
         )
         if need_relaunch:
             await self.close()
@@ -57,7 +55,6 @@ class CamoufoxFamily(BrowserFamily):
                 raise RuntimeError("Camoufox вернул не Browser в неперсистентном режиме.")
             self._browser = browser_obj
 
-        self._headless_used = cfg.headless
         self._launch_opts_used = dict(cfg.launch_opts)
 
     async def close(self) -> None:

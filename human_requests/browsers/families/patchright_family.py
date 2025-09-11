@@ -34,9 +34,7 @@ class PatchrightFamily(BrowserFamily):
             raise RuntimeError("stealth несовместим с engine='patchright'.")
 
         need_relaunch = (
-            self._pw is None
-            or self._browser is None
-            or self._launch_opts_used != cfg.launch_opts
+            self._pw is None or self._browser is None or self._launch_opts_used != cfg.launch_opts
         )
         if need_relaunch:
             await self.close()  # мягко закрыть, если уже есть
