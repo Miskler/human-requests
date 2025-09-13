@@ -2,12 +2,6 @@
 Browser Anti-Bot Report
 =======================
 
-Legend:
-
-- ✅ — test never failed.
-- ❌ base[, unstable] / ❌ stealth[, unstable] — failed only in the specified mode (yellow background).
-- ❌[, unstable] — failed everywhere (red background).
-
 .. antibot-table:: ../../tests/sannysoft/browser_antibot_sannysoft.json
    :title: Sannysoft Anti-bot Matrix
 
@@ -25,6 +19,7 @@ particularities; there are no errors with goto requests *(and it's not critical 
 
 Practical Recommendations
 -------------------------
+
 Below are general tips that, on average, reduce the "bot footprint" and
 stabilize the output:
 
@@ -43,6 +38,7 @@ stabilize the output:
 
 Disclaimer
 ----------
+
 - The set of codecs, GPU/drivers, system libraries, and security policies
   of the execution environment may affect the results (especially in headless
   environments).

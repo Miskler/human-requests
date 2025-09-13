@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 core.session — единая state-ful-сессия для *curl_cffi* и *Playwright*-совместимых движков.
 
@@ -24,8 +22,10 @@ core.session — единая state-ful-сессия для *curl_cffi* и *Play
   - `browser_launch_opts` (произвольный dict)
   - `headless` (всегда переопределяет одноимённый ключ)
   - `proxy` (строка URL или dict) → адаптация под Playwright/Patchright/Camoufox
-- Прокси также применяется к curl_cffi (если в .request() не передан свой `proxies`).
+- Прокси также применяется к curl_cffi (если в .request() не передан свой `proxy`).
 """
+
+from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from time import perf_counter
@@ -87,12 +87,20 @@ class Session:
             direct_retry: число повторов direct-запроса при curl_cffi Timeout (после первичной)
         """
         self.timeout: float = timeout
+        """Таймаут для запросов goto/direct"""
         self.headless: bool = bool(headless)
+        """Запускать ли браузер в headless-режиме?"""
         self.browser_name: Engine = browser
+        """Текущий браузер (chromium/firefox/webkit/camoufox/patchright)"""
         self.spoof: ImpersonationConfig = spoof or ImpersonationConfig()
+        """Настройки имперсонации (user-agent, tlc, client-hello)"""
         self.playwright_stealth: bool = bool(playwright_stealth)
+        """Прятать ли некоторые сигнатуры автоматизированного браузера?
+        Реализовано через js-инъекцию. Некоторые сайты могут это обнаружить."""
         self.page_retry: int = int(page_retry)
+        """Если после N секунд наступил таймаут - page.reload()"""
         self.direct_retry: int = int(direct_retry)
+        """Если после N секунд наступил таймаут - direct-запрос повторится"""
 
         if self.browser_name in ("camoufox", "patchright") and self.playwright_stealth:
             raise RuntimeError(
@@ -102,11 +110,21 @@ class Session:
 
         # Пользовательские launch-параметры браузера + прокси
         self.browser_launch_opts: Mapping[str, Any] = browser_launch_opts
+        """launch-аргументы для браузера (произвольные ключи)"""
         self.proxy: str | dict[str, str] | None = proxy
+        """
+        Прокси-сервер вида:
+
+        a. строка URL вида - `schema://user:pass@host:port`
+
+        b. playwright-like-dict
+        """
 
         # Состояние cookie/localStorage
         self.cookies: CookieManager = CookieManager([])
+        """Хранилище всех актуальных кук."""
         self.local_storage: dict[str, dict[str, str]] = {}
+        """localStorage из последнего контекста (запуска goto) браузера."""
 
         # Низкоуровневый HTTP
         self._curl: Optional[cffi_requests.AsyncSession] = None

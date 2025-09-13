@@ -6,7 +6,8 @@ Welcome to human-requests documentation!
    :caption: Basic use
 
    quick_start
-   sannysoft_antibot
+   browser_selection/index
+   interesting
 
 .. toctree::
    :maxdepth: 4

@@ -80,9 +80,12 @@ class ImpersonationConfig:
     min_version: int | None = None  # >=
     """Минимальная версия браузера"""
     custom_filter: Callable[[str], bool] = _always
+    """Можете написать свой скрипт для фильтрации имперсонационных профилей.
+    Обязательно возвращать bool"""
 
     # --- дополнительные параметры -----------------------------------------
-    geo_country: str = "en-US"  # ISO-2 code (DE, RU…)
+    geo_country: str = "en-US"
+    """Языковой тег по стандарту BCP 47 (en-US, ru-RU, etc.)"""
     sync_with_engine: bool = True  # ограничивать семейством движка Playwright
     """Ограничивать семейством текущим движком Playwright (chromium, firefox, webkit)
     или camoufox=firefox"""
