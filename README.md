@@ -5,7 +5,7 @@
 
 <img src="https://raw.githubusercontent.com/Miskler/human-requests/refs/heads/main/assets/logo.png" width="70%" alt="logo.webp" />
 
-*Асинхронная библиотека для браузероподобных HTTP‑сценариев с управляемым оффлайн‑рендером и двусторонним переносом состояния.*
+*Asynchronous library for browser‑like HTTP scenarios with controlled offline rendering and two‑way state transfer.*
 
 [![Tests](https://miskler.github.io/human-requests/tests-badge.svg)](https://miskler.github.io/human-requests/tests/tests-report.html)
 [![Coverage](https://miskler.github.io/human-requests/coverage.svg)](https://miskler.github.io/human-requests/coverage/)
@@ -18,23 +18,23 @@
 [![Telegram](https://img.shields.io/badge/Telegram-24A1DE)](https://t.me/miskler_dev)
 
 
-**[⭐ Star us on GitHub](https://github.com/Miskler/human-requests)** | **[📚 Read the Docs](https://miskler.github.io/human-requests/quick_start)** | **[🐛 Report Bug](https://github.com/Miskler/human-requests/issues)**
+**[⭐ Star us on GitHub](https://github.com/Miskler/human-requests)** | **[📚 Read the Docs](https://miskler.github.io/human-requests/quick_start)** | **[🐛 Report a Bug](https://github.com/Miskler/human-requests/issues)**
 
 ## ✨ Features
 
 </div>
 
-- **HTTP по умолчанию.** Прямые запросы через `curl_cffi` в режиме impersonate + генерация реальных браузерных заголовков.
-- **Браузер по требованию.** Оффлайн‑рендер уже полученного ответа (без повторного HTTP) и выполнение JS.
-- **Единое состояние.** Двусторонний перенос **cookies** и **`localStorage`** между HTTP и браузером (storage_state ⇄ сессия).
-- **Async by design.** Нативный `asyncio` для предсказуемой конкурентности.
+- **HTTP by default.** Direct requests via `curl_cffi` in *impersonate* mode + real browser headers generation.
+- **Browser on demand.** Offline render of an already received response (no repeated HTTP) and JS execution.
+- **Unified state.** Two‑way transfer of **cookies** and **`localStorage`** between HTTP and the browser (storage_state ⇄ session).
+- **Async by design.** Native `asyncio` for predictable concurrency.
 
 
 <div align="center">
 
-## 🚀 Быстрый старт
+## 🚀 Quick Start
 
-### Установка
+### Installation
 
 </div>
 
@@ -45,7 +45,7 @@ playwright install
 
 <div align="center">
 
-### Прямой запрос *(притворяемся браузером)*
+### Direct request *(pretend to be a browser)*
 
 </div>
 
@@ -63,22 +63,22 @@ asyncio.run(main())
 
 <div align="center">
 
-### Дорендерить уже полученный ответ *(без повторного запроса)*
+### Render an already received response *(without another request)*
 
 </div>
 
 ```python
-# resp — результат HTTP-запроса
+# resp — the result of an HTTP request
 async with resp.render(wait_until="networkidle") as page:
     await page.wait_for_selector("#content")
 
-# после выхода:
-# - cookies и localStorage вернулись в сессию
+# after exiting:
+# - cookies and localStorage are synced back into the session
 ```
 
 <div align="center">
 
-### Прогрев: подложить `localStorage` ДО старта страницы
+### Warm‑up: inject `localStorage` BEFORE page start
 
 </div>
 
@@ -86,19 +86,19 @@ async with resp.render(wait_until="networkidle") as page:
 origin = "https://target.example"
 
 async with Session(headless=True, browser="camoufox") as s:
-    # подготовили storage_state заранее
+    # prepare storage_state in advance
     s.local_storage.setdefault(origin, {})
     s.local_storage[origin]["seen"] = "1"
     s.local_storage[origin]["ab_variant"] = "B"
 
-    # браузер стартует уже с нужными значениями
+    # the browser starts with the required values already in place
     async with s.goto_page(f"{origin}/", wait_until="networkidle"):
         pass
 ```
 
 <div align="center">
 
-### Доступ к состоянию
+### Accessing state
 
 </div>
 
@@ -112,34 +112,34 @@ print(s.local_storage.get("https://target.example", {}))
 
 <div align="center">
 
-## Ключевые особенности
+## Key Characteristics
 
 </div>
 
-- Имперсонация HTTP: `curl_cffi` + браузерные заголовки на каждом запросе.
-- Оффлайн‑рендер: подмена первого ответа (fulfill) и мягкие перезагрузки без пересоздания контекстов.
-- State as first‑class: cookies и `localStorage` синхронизируются в обе стороны.
-- Единый прокси‑контур: один формат прокси → для `curl_cffi` и для Playwright.
-- Чистый стек: без внешних Go‑бинарей.
+- HTTP impersonation: `curl_cffi` + browser‑grade headers on every request.
+- Offline render: first response interception (fulfill) and soft reloads without recreating contexts.
+- State as a first‑class citizen: cookies and `localStorage` sync both ways.
+- Unified proxy layer: single proxy format → for `curl_cffi` and Playwright.
+- Clean stack: no external Go binaries.
 
 <div align="center">
 
-## Сравнение: human-requests vs hrequests
+## Comparison: human-requests vs hrequests
 
 </div>
 
-| Аспект | human-requests | hrequests |
+| Aspect | human-requests | hrequests |
 |---|---|---|
-| Модель исполнения | `asyncio` (нативно) | sync + threads/gevent |
-| Имперсонация HTTP | `curl_cffi` impersonate + браузерные заголовки per‑request | `tls-client` (Go backend) |
-| Оффлайн‑рендер `Response` | Да (fulfill + soft‑reload; без повторного HTTP) | Да (дорендер и обновление cookies/контента) |
-| Cookies ↔ HTTP/Browser | Двусторонний перенос | Двусторонний перенос |
-| `localStorage` ↔ HTTP/Browser | First‑class (storage_state ⇄ сессия) | Через `page.evaluate(...)` |
-| Типизация | Пригодно для mypy | — |
-| Зависимости | Без Go‑бинарей | Go‑backend (`tls-client`) |
-| Встроенный HTML‑парсер | — | `selectolax` |
+| Execution model | `asyncio` (native) | sync + threads/gevent |
+| HTTP impersonation | `curl_cffi` impersonate + per‑request browser headers | `tls-client` (Go backend) |
+| Offline `Response` render | Yes (fulfill + soft‑reload; no repeated HTTP) | Yes (post‑render with cookies/content update) |
+| Cookies ↔ HTTP/Browser | Two‑way transfer | Two‑way transfer |
+| `localStorage` ↔ HTTP/Browser | First‑class (storage_state ⇄ session) | Via `page.evaluate(...)` |
+| Typing | mypy‑friendly | — |
+| Dependencies | No Go binaries | Go backend (`tls-client`) |
+| Built‑in HTML parser | — | `selectolax` |
 
-> Фокус human-requests — **контролируемый** антибот‑пайплайн в `asyncio`: HTTP по умолчанию, браузер — точечно, с переносом состояния.
+> The focus of human-requests is a **controlled** anti‑bot pipeline in `asyncio`: HTTP by default, a browser only where needed, with state hand‑off.
 
 <div align="center">
 
@@ -167,21 +167,21 @@ make install-dev
 ```bash
 # Checks
 pytest          # tests + coverage
-make lint       # ruff/flake8/isort/black (если подключено)
+make lint       # ruff/flake8/isort/black (if enabled)
 make type-check # mypy/pyright
 # Actions
-make format     # форматирование
-make docs       # сборка документации
+make format     # formatting
+make docs       # build documentation
 ```
 
 <div align="center">
 
-### Dev: локальный тест‑сервер
+### Dev: local test server
 
 </div>
 
 ```bash
-# из папки test_server/
-make serve  # форграунд (Ctrl+C чтобы остановить)
-make stop   # остановить фоновый
+# from the test_server/ folder
+make serve  # foreground (Ctrl+C to stop)
+make stop   # stop background process
 ```
