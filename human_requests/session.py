@@ -11,10 +11,13 @@ Main Methods
 Optional Dependencies
 =====================
 - playwright-stealth: enabled via `playwright_stealth=True`.
-  If the package is not installed and the flag is set — raises RuntimeError with installation instructions.
+  If the package is not installed and the flag is set — raises RuntimeError
+  with installation instructions.
 - camoufox: selected with `browser='camoufox'`.
 - patchright: selected with `browser='patchright'`.
-- Incompatibility: camoufox/patchright + playwright_stealth simultaneously is forbidden (raises RuntimeError).
+- Incompatibility: camoufox/patchright + playwright_stealth cannot be used together.
+  Raises RuntimeError.
+
 
 Additional
 ==========
@@ -84,7 +87,7 @@ class Session:
             spoof: configuration for direct requests
             playwright_stealth: hides certain automation browser signatures
             page_retry: number of "soft" retries for page navigation (after the initial attempt)
-            direct_retry: number of retries for direct requests on curl_cffi Timeout (after the initial attempt)
+            direct_retry: retries for direct requests on curl_cffi Timeout (after first attempt)
         """
         self.timeout: float = timeout
         """Timeout for goto/direct requests."""
