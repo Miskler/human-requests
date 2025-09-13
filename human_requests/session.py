@@ -1,28 +1,28 @@
 """
-core.session — единая state-ful-сессия для *curl_cffi* и *Playwright*-совместимых движков.
+core.session — unified stateful session for *curl_cffi* and *Playwright*-compatible engines.
 
-Главные методы
-==============
-* ``Session.request``   — низкоуровневый HTTP-запрос (curl_cffi) с cookie-jar.
-* ``Session.goto_page`` — открывает URL в браузере, возвращает Page внутри
-  контекст-менеджера; по выходу синхронизирует cookies + localStorage.
-* ``Response.render``   — офлайн-рендер заранее полученного Response.
+Main Methods
+============
+* ``Session.request``   — low-level HTTP request (curl_cffi) with cookie jar.
+* ``Session.goto_page`` — opens a URL in the browser, returns a Page inside
+  a context manager; upon exit synchronizes cookies + localStorage.
+* ``Response.render``   — offline render of a pre-fetched Response.
 
-Опциональные зависимости
-========================
-- playwright-stealth: включается флагом `playwright_stealth=True`.
-  Если пакет не установлен и флаг включён — бросаем RuntimeError с инструкцией по установке.
-- camoufox: выбирается `browser='camoufox'`.
-- patchright: выбирается `browser='patchright'`.
-- Несовместимость: camoufox/patchright + playwright_stealth одновременно запрещены (RuntimeError).
+Optional Dependencies
+=====================
+- playwright-stealth: enabled via `playwright_stealth=True`.
+  If the package is not installed and the flag is set — raises RuntimeError with installation instructions.
+- camoufox: selected with `browser='camoufox'`.
+- patchright: selected with `browser='patchright'`.
+- Incompatibility: camoufox/patchright + playwright_stealth simultaneously is forbidden (raises RuntimeError).
 
-Дополнительно
-=============
-- Аргументы запуска браузера собираются через `make_browser_launch_opts()` из:
-  - `browser_launch_opts` (произвольный dict)
-  - `headless` (всегда переопределяет одноимённый ключ)
-  - `proxy` (строка URL или dict) → адаптация под Playwright/Patchright/Camoufox
-- Прокси также применяется к curl_cffi (если в .request() не передан свой `proxy`).
+Additional
+==========
+- Browser launch arguments are assembled via `make_browser_launch_opts()` from:
+  - `browser_launch_opts` (arbitrary dict)
+  - `headless` (always overrides the key of the same name)
+  - `proxy` (string URL or dict) → adapted for Playwright/Patchright/Camoufox
+- Proxy is also applied to curl_cffi (if no custom `proxy` is passed in .request()).
 """
 
 from __future__ import annotations
@@ -78,53 +78,61 @@ class Session:
     ) -> None:
         """
         Args:
-            timeout: стандартный таймаут для direct и goto запросов
-            headless: режим запуска (идёт в launch-аргументы браузера)
-            browser: chromium/firefox/webkit — стандартные; camoufox/patchright — спец. сборки
-            spoof: конфиг для direct-запросов
-            playwright_stealth: прячет некоторые сигнатуры автоматизированного браузера
-            page_retry: число «мягких» повторов навигации страницы (после первичной)
-            direct_retry: число повторов direct-запроса при curl_cffi Timeout (после первичной)
+            timeout: default timeout for both direct and goto requests
+            headless: launch mode (passed into browser launch arguments)
+            browser: chromium/firefox/webkit — standard; camoufox/patchright — special builds
+            spoof: configuration for direct requests
+            playwright_stealth: hides certain automation browser signatures
+            page_retry: number of "soft" retries for page navigation (after the initial attempt)
+            direct_retry: number of retries for direct requests on curl_cffi Timeout (after the initial attempt)
         """
         self.timeout: float = timeout
-        """Таймаут для запросов goto/direct"""
+        """Timeout for goto/direct requests."""
+
         self.headless: bool = bool(headless)
-        """Запускать ли браузер в headless-режиме?"""
+        """Whether to run the browser in headless mode."""
+
         self.browser_name: Engine = browser
-        """Текущий браузер (chromium/firefox/webkit/camoufox/patchright)"""
+        """Current browser (chromium/firefox/webkit/camoufox/patchright)."""
+
         self.spoof: ImpersonationConfig = spoof or ImpersonationConfig()
-        """Настройки имперсонации (user-agent, tlc, client-hello)"""
+        """Impersonation settings (user-agent, TLS, client-hello)."""
+
         self.playwright_stealth: bool = bool(playwright_stealth)
-        """Прятать ли некоторые сигнатуры автоматизированного браузера?
-        Реализовано через js-инъекцию. Некоторые сайты могут это обнаружить."""
+        """Hide certain automation signatures?
+        Implemented via JS injection. Some sites may detect this."""
+
         self.page_retry: int = int(page_retry)
-        """Если после N секунд наступил таймаут - page.reload()"""
+        """If a timeout occurs after N seconds — retry with page.reload()."""
+
         self.direct_retry: int = int(direct_retry)
-        """Если после N секунд наступил таймаут - direct-запрос повторится"""
+        """If a timeout occurs after N seconds — retry the direct request."""
 
         if self.browser_name in ("camoufox", "patchright") and self.playwright_stealth:
             raise RuntimeError(
-                "playwright_stealth=True несовместим с browser='camoufox'/'patchright'. "
-                "Отключите stealth или используйте chromium/firefox/webkit."
+                "playwright_stealth=True is incompatible with browser='camoufox'/'patchright'. "
+                "Disable stealth or use chromium/firefox/webkit."
             )
 
-        # Пользовательские launch-параметры браузера + прокси
+        # Custom browser launch parameters + proxy
         self.browser_launch_opts: Mapping[str, Any] = browser_launch_opts
-        """launch-аргументы для браузера (произвольные ключи)"""
+        """Browser launch arguments (arbitrary keys)."""
+
         self.proxy: str | dict[str, str] | None = proxy
         """
-        Прокси-сервер вида:
+        Proxy server, one of:
 
-        a. строка URL вида - `schema://user:pass@host:port`
+        a. URL string in the form: `schema://user:pass@host:port`
 
-        b. playwright-like-dict
+        b. playwright-like dict
         """
 
-        # Состояние cookie/localStorage
+        # Cookie/localStorage state
         self.cookies: CookieManager = CookieManager([])
-        """Хранилище всех актуальных кук."""
+        """Storage of all active cookies."""
+
         self.local_storage: dict[str, dict[str, str]] = {}
-        """localStorage из последнего контекста (запуска goto) браузера."""
+        """localStorage from the last browser context (goto run)."""
 
         # Низкоуровневый HTTP
         self._curl: Optional[cffi_requests.AsyncSession] = None
@@ -139,12 +147,12 @@ class Session:
     # ──────────────── Launch args & proxy helpers ────────────────
     def _make_browser_launch_opts(self) -> dict[str, Any]:
         """
-        Склеивает launch-аргументы для BrowserMaster из настроек Session.
+        Merges launch arguments for BrowserMaster from Session settings.
 
-        Источники:
-          - self.browser_launch_opts (произвольные ключи)
-          - self.headless (перекрывает одноимённый ключ)
-          - self.proxy (строка URL или dict) → playwright-style proxy
+        Sources:
+          - self.browser_launch_opts (arbitrary keys)
+          - self.headless (overrides the key of the same name)
+          - self.proxy (URL string or dict) → converted to Playwright-style proxy
         """
         opts = dict(self.browser_launch_opts)
         opts["headless"] = bool(self.headless)
@@ -166,14 +174,14 @@ class Session:
         **kwargs: Any,
     ) -> Response:
         """
-        Обычный быстрый запрос через curl_cffi.
-        Обязательно нужно передать HttpMethod или его строковое представление, а также url.
+        Standard fast request via curl_cffi.
+        You must provide either an HttpMethod or its string representation, as well as a URL.
 
-        Опционально можно передать дополнительные заголовки.
+        Optionally, you can pass additional headers.
 
-        Через **kwargs можно передать дополнительные параметры curl_cffi.AsyncSession.request
-        (см. их документацию для подробностей).
-        Повторяем ТОЛЬКО при cffi Timeout: ``curl_cffi.requests.exceptions.Timeout``.
+        Extra parameters can be passed through **kwargs to curl_cffi.AsyncSession.request
+        (see their documentation for details).
+        Retries are performed ONLY on cffi Timeout: ``curl_cffi.requests.exceptions.Timeout``.
         """
         method_enum = method if isinstance(method, HttpMethod) else HttpMethod[str(method).upper()]
         base_headers = {k.lower(): v for k, v in (headers or {}).items()}
@@ -287,8 +295,8 @@ class Session:
         retry: int | None = None,
     ) -> AsyncGenerator[Page, None]:
         """
-        Открытие страницы в браузере через одноразовый контекст.
-        Повторы делают «мягкий reload» без пересоздания контекста.
+        Opens a page in the browser using a one-time context.
+        Retries perform a "soft reload" without recreating the context.
         """
         # Обновляем launch-аргументы в мастере перед стартом
         self._bm.launch_opts = self._make_browser_launch_opts()
@@ -330,9 +338,10 @@ class Session:
         retry: int | None = None,
     ) -> AsyncGenerator[Page, None]:
         """
-        Офлайн-рендер Response: создаём временный контекст (с нашим storage_state),
-        перехватываем первый запрос и отвечаем подготовленным телом.
-        Повторы не пересоздают контекст/страницу — «мягкий reload», на повторе перевешиваем route.
+        Offline render of a Response: creates a temporary context (with our storage_state),
+        intercepts the first request and responds with the prepared body.
+        Retries do not recreate the context/page — instead a "soft reload" is performed,
+        reattaching the route on retry.
         """
         # Обновляем launch-аргументы в мастере перед стартом
         self._bm.launch_opts = self._make_browser_launch_opts()

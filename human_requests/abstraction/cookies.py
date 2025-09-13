@@ -80,7 +80,7 @@ class Cookie:
 
 @dataclass
 class CookieManager:
-    """Удобная обёртка-«jar» + Playwright конвертация."""
+    """Convenient jar-style wrapper + Playwright conversion."""
 
     storage: list[Cookie] = field(default_factory=list)
 
@@ -96,7 +96,7 @@ class CookieManager:
 
     # ────── CRUD ──────
     def get(self, name: str, domain: str | None = None, path: str | None = None) -> Cookie | None:
-        """Получить куку по имени, домену и пути."""
+        """Get a cookie by name, domain, and path."""
         return next(
             (
                 c
@@ -109,7 +109,7 @@ class CookieManager:
         )
 
     def get_for_domain(self, url_or_domain: str) -> list[Cookie]:
-        """Получить все куки доступные для домена/урла"""
+        """Get all cookies available for a domain/URL."""
         host = urlsplit(url_or_domain).hostname or url_or_domain.split(":")[0]
         if not host:
             return []
@@ -120,7 +120,7 @@ class CookieManager:
         return [c for c in self.storage if _match(c.domain, host)]
 
     def add(self, cookie: Cookie | Iterable[Cookie]) -> None:
-        """Добавить куку/куки."""
+        """Add a cookie or cookies."""
 
         def _add_one(c: Cookie) -> None:
             key = (c.domain, c.path, c.name)
@@ -140,7 +140,7 @@ class CookieManager:
     def delete(
         self, name: str, domain: str | None = None, path: str | None = None
     ) -> Cookie | None:
-        """Удалить куку по имени, домену и пути."""
+        """Delete a cookie by name, domain, and path."""
         for i, c in enumerate(self.storage):
             if (
                 c.name == name
@@ -152,9 +152,9 @@ class CookieManager:
 
     # ────── Playwright helpers ──────
     def to_playwright(self) -> list[StorageStateCookie]:
-        """Сериализовать все куки в формат, понятный Playwright."""
+        """Serialize all cookies into a format understood by Playwright."""
         return [c.to_playwright_like_dict() for c in self.storage]
 
     def add_from_playwright(self, raw_cookies: Iterable[Mapping[str, Any]]) -> None:
-        """Обратная операция — добавить список PW-кук/маппингов в jar."""
+        """Inverse operation — add a list of Playwright cookies/mappings to the jar."""
         self.add(Cookie.from_playwright_like_dict(rc) for rc in raw_cookies)

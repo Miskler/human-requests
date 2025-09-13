@@ -11,7 +11,7 @@ PlaywrightEngine = Literal["chromium", "firefox", "webkit"]
 
 
 class DesiredConfig:
-    """Единая «желаемая» конфигурация для всех семейств."""
+    """Unified "desired" configuration for all families."""
 
     __slots__ = ("family", "engine", "headless", "stealth", "launch_opts")
 
@@ -30,28 +30,28 @@ class DesiredConfig:
 
 
 class BrowserFamily(ABC):
-    """Интерфейс семейства. Внутри реализуется idempotent-старт и мягкие перезапуски."""
+    """Family interface. Implements idempotent start and soft restarts internally."""
 
     @property
     @abstractmethod
     def name(self) -> Family:  # noqa: D401
-        """Имя семейства."""
+        """Family name."""
         raise NotImplementedError
 
     @abstractmethod
     async def start(self, cfg: DesiredConfig) -> None:
-        """Идемпотентный запуск/перезапуск по cfg."""
+        """Idempotent launch/restart according to cfg."""
         raise NotImplementedError
 
     @abstractmethod
     async def close(self) -> None:
-        """Закрыть все ресурсы семейства (браузер + рантайм)."""
+        """Close all family resources (browser + runtime)."""
         raise NotImplementedError
 
     @property
     @abstractmethod
     def browser(self) -> Optional[Browser]:
-        """Текущий Browser или None, если не запущен."""
+        """Current Browser or None if not started."""
         raise NotImplementedError
 
     async def new_context(

@@ -4,15 +4,21 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 APP_TITLE = "Test Server"
 COOKIE_BASE = "base_visited"
 COOKIE_CHALLENGE = "js_challenge"
-REDIRECT_TARGET = "/api/protected"      # ← куда перенаправляем после прохождения «челленджа»
+REDIRECT_TARGET = "/api/protected"      # ← where to redirect after the “challenge” is passed
 
 app = FastAPI(title=APP_TITLE)
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    """Redirect root path to /docs."""
+    return RedirectResponse(url="/docs", status_code=302)
 
 
 @app.get("/base", response_class=HTMLResponse)
 async def base(request: Request) -> HTMLResponse:
     """
-    Возвращает HTML и одновременно ставит куку base_visited="yes, this is content"
+    Returns HTML and simultaneously sets the cookie base_visited="yes, this is content".
     """
     html = open("pages/base.html").read()
     resp = HTMLResponse(content=html, status_code=200)
@@ -29,8 +35,8 @@ async def base(request: Request) -> HTMLResponse:
 @app.get("/api/challenge")
 async def api_challenge(request: Request):
     """
-    Если куки COOKIE_CHALLENGE нет — отдаём HTML с JS, который выставляет куку и перезагружает страницу.
-    Если кука есть — отдаём JSON.
+    If the COOKIE_CHALLENGE cookie is missing — return HTML with JS that sets the cookie and reloads the page.
+    If the cookie is present — return JSON.
     """
     if COOKIE_CHALLENGE not in request.cookies:
         html = (
@@ -53,22 +59,22 @@ async def api_challenge(request: Request):
 @app.get("/api/base")
 async def api_base():
     """
-    Простой JSON-эндпойнт без условий.
+    Simple JSON endpoint without conditions.
     """
     return JSONResponse({"ok": True, "endpoint": "/api/base"}, status_code=200)
 
 
 @app.get("/redirect-base")
 async def redirect_base():
-    """Простой 302 на /api/base (без кук)."""
+    """Simple 302 to /api/base (no cookies)."""
     return RedirectResponse(url="/api/base", status_code=302)
 
 
 @app.get("/redirect-challenge", response_class=HTMLResponse)
 async def redirect_challenge(request: Request):
     """
-    • Нет куки — показываем HTML с JS, который ставит куку и перезагружает страницу.  
-    • Есть кука  — мгновенно редиректим на /api/protected.
+    • No cookie — show HTML with JS that sets the cookie and reloads the page.  
+    • Cookie present — immediately redirect to /api/protected.
     """
     if COOKIE_CHALLENGE not in request.cookies:
         html = (
@@ -77,14 +83,14 @@ async def redirect_challenge(request: Request):
             .format(COOKIE_CHALLENGE=COOKIE_CHALLENGE)
         )
         return HTMLResponse(content=html, status_code=200)
-    # кука уже есть → переходим на JSON-эндпойнт
+    # cookie already present → go to the JSON endpoint
     return RedirectResponse(url=REDIRECT_TARGET, status_code=302)
 
 
 @app.get("/api/protected")
 async def api_protected(request: Request):
     """
-    JSON-страница, доступная только после выставления COOKIE_CHALLENGE.
+    JSON page available only after COOKIE_CHALLENGE is set.
     """
     if COOKIE_CHALLENGE not in request.cookies:
         return JSONResponse(
@@ -104,10 +110,10 @@ async def api_protected(request: Request):
 @app.get("/headers")
 async def headers_echo(request: Request):
     """
-    Поведение:
-      - возвращает JSON["headers"] — аналог httpbin.org/headers (заголовки, как видит код в приложении)
-      - возвращает JSON["raw_headers"] — список [name, value] как пришёл в ASGI (bytes -> decoded)
-        это даёт возможность увидеть реальные имена/дублирование/регистры заголовков, которые дошли до серверного адаптера.
+    Behavior:
+      - returns JSON["headers"] — like httpbin.org/headers (headers as seen by the app code)
+      - returns JSON["raw_headers"] — list of [name, value] as received by ASGI (bytes -> decoded)
+        this allows you to see actual names/duplication/casing of headers that reached the server adapter.
     """
     # Normalized headers (what frameworks usually surface)
     normalized = {k: v for k, v in request.headers.items()}

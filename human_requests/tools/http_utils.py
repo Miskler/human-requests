@@ -1,8 +1,5 @@
 """
 HTTP-helpers (cookie logic, charset, Playwright ↔ Curl adapters).
-
-Никаких зависимостей от curl_cffi или Playwright – только stdlib +
-наша модель Cookie.  Все функции чистые: удобно тестировать отдельно.
 """
 
 from __future__ import annotations
@@ -57,7 +54,7 @@ def compose_cookie_header(
     current_headers: Mapping[str, str],
     jar: Iterable[Cookie],
 ) -> Tuple[str, list[Cookie]]:
-    """Возвращает (header-строка, [куки-список, реально отправленные])."""
+    """Returns (header string, [cookie list, actually sent])."""
     if "cookie" in current_headers:
         return current_headers["cookie"], []
 

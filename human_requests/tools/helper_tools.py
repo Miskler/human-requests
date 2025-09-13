@@ -1,10 +1,10 @@
-from __future__ import annotations
+"""
+helper_tools — helper utilities independent of a specific Session:
+- assembling/merging storage_state (cookies + localStorage)
+- unified navigation handler with soft retries
+"""
 
-"""
-helper_tools — вспомогательные утилиты, не зависящие от конкретного Session:
-- сборка/слияние storage_state (cookies + localStorage)
-- единый хендлер навигации с мягкими ретраями
-"""
+from __future__ import annotations
 
 from typing import TYPE_CHECKING, Awaitable, Callable, Literal, Optional
 
@@ -42,9 +42,9 @@ async def merge_storage_state_from_context(
     ctx: BrowserContext, *, cookie_manager: "CookieManager"
 ) -> dict[str, dict[str, str]]:
     """
-    Читает storage_state из контекста и синхронизирует внутреннее состояние:
-    - localStorage: ПОЛНАЯ перезапись и возвращается наружу
-    - cookies: ДОБАВЛЕНИЕ/ОБНОВЛЕНИЕ в переданный CookieManager
+    Reads storage_state from the context and synchronizes internal state:
+    - localStorage: FULL overwrite and returned outward
+    - cookies: ADD/UPDATE in the provided CookieManager
     """
     state = await ctx.storage_state()  # dict с 'cookies' и 'origins'
 
@@ -80,9 +80,9 @@ async def handle_nav_with_retries(
     on_retry: Optional[Callable[[], Awaitable[None]]] = None,
 ) -> None:
     """
-    Единый хендлер навигации с мягкими повторами для goto/render.
-    Ловит ТОЛЬКО PlaywrightTimeoutError. На повторах вызывает on_retry()
-    (если задан), затем делает reload (мягкая перезагрузка).
+    Unified navigation handler with soft retries for goto/render.
+    Catches ONLY PlaywrightTimeoutError. On retries calls on_retry()
+    (if provided), then performs a reload (soft refresh).
     """
     try:
         await page.goto(target_url, wait_until=wait_until, timeout=timeout_ms)

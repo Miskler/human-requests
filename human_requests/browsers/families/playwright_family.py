@@ -9,9 +9,9 @@ from .base import BrowserFamily, DesiredConfig, Family, PlaywrightEngine
 
 class PlaywrightFamily(BrowserFamily):
     """
-    Обычный Playwright (со stealth-обёрткой при запросе).
-    Перезапускает только то, что изменилось: PW-движок при смене stealth,
-    браузер — при смене engine/headless/launch_opts.
+    Standard Playwright (with stealth wrapper on demand).
+    Restarts only what has changed: PW engine when stealth changes,
+    browser when engine/headless/launch_opts change.
     """
 
     def __init__(self) -> None:
@@ -47,8 +47,8 @@ class PlaywrightFamily(BrowserFamily):
                     from playwright_stealth import Stealth  # type: ignore[import-untyped]
                 except Exception:
                     raise RuntimeError(
-                        "stealth=True, но пакет 'playwright-stealth' не установлен. "
-                        "Установите: pip install playwright-stealth"
+                        "stealth=True, but the 'playwright-stealth' package is not installed. "
+                        "Install it with: pip install playwright-stealth"
                     )
                 self._stealth_cm = Stealth().use_async(async_playwright())
                 self._pw = await self._stealth_cm.__aenter__()

@@ -38,28 +38,28 @@ def _family(profile: str) -> str:  # 'chrome122' -> 'chrome'
 # Политика выбора профиля для impersonate()
 # ---------------------------------------------------------------------------
 class Policy(Enum):
-    """Политика момента выбора профиля для ImpersonationConfig"""
+    """Policy for selecting a profile in ImpersonationConfig"""
 
-    INIT_RANDOM = auto()  # профиль выбирается при создании сессии
-    """Профиль выбирается при создании сессии, а затем не меняется"""
-    RANDOM_EACH_REQUEST = auto()  # новый профиль перед каждым запросом
-    """Профиль выбирается при каждом запросе"""
+    INIT_RANDOM = auto()  # profile is selected when the session is created
+    """Profile is selected at session creation and then does not change"""
+    RANDOM_EACH_REQUEST = auto()  # new profile before each request
+    """Profile is selected for every request"""
 
 
 # ---------------------------------------------------------------------------
-# Dataclass-конфиг
+# Dataclass config
 # ---------------------------------------------------------------------------
 def _always(_: str) -> bool:
-    """Стандартный ImpersonationConfig.custom_filter фильтр"""
+    """Default filter for ImpersonationConfig.custom_filter"""
     return True
 
 
 @dataclass(slots=True)
 class ImpersonationConfig:
     """
-    Настройки спуфинга для curl_cffi **и** генерации браузерных заголовков.
+    Spoofing settings for curl_cffi **and** browser header generation.
 
-    Пример::
+    Example::
 
         cfg = ImpersonationConfig(
             policy=Policy.RANDOM_EACH_REQUEST,
@@ -70,34 +70,34 @@ class ImpersonationConfig:
         )
     """
 
-    # --- главная политика --------------------------------------------------
+    # --- main policy -------------------------------------------------------
     policy: Policy = Policy.INIT_RANDOM
-    """Политика момента выбора профиля"""
+    """Policy for when a profile is selected"""
 
-    # --- фильтры выбора профиля -------------------------------------------
-    browser_family: str | Sequence[str] | None = None  # 'chrome' или ['chrome','edge']
-    """Семейство браузеров (chrome, edge, opera, firefox, safari)"""
+    # --- profile selection filters ----------------------------------------
+    browser_family: str | Sequence[str] | None = None  # 'chrome' or ['chrome','edge']
+    """Browser family (chrome, edge, opera, firefox, safari)"""
     min_version: int | None = None  # >=
-    """Минимальная версия браузера"""
+    """Minimum browser version"""
     custom_filter: Callable[[str], bool] = _always
-    """Можете написать свой скрипт для фильтрации имперсонационных профилей.
-    Обязательно возвращать bool"""
+    """Custom script for filtering impersonation profiles.
+    Must return a bool"""
 
-    # --- дополнительные параметры -----------------------------------------
+    # --- additional parameters --------------------------------------------
     geo_country: str = "en-US"
-    """Языковой тег по стандарту BCP 47 (en-US, ru-RU, etc.)"""
-    sync_with_engine: bool = True  # ограничивать семейством движка Playwright
-    """Ограничивать семейством текущим движком Playwright (chromium, firefox, webkit)
-    или camoufox=firefox"""
-    rotate_headers: bool = True  # использовать HeaderGenerator
-    """Генерировать ли браузеро-подобные заголовки (user-agent, accept-language, etc.)"""
+    """Language tag in BCP 47 format (en-US, ru-RU, etc.)"""
+    sync_with_engine: bool = True  # restrict to Playwright engine family
+    """Restrict to the current Playwright engine family (chromium, firefox, webkit),
+    or camoufox=firefox"""
+    rotate_headers: bool = True  # use HeaderGenerator
+    """Whether to generate browser-like headers (user-agent, accept-language, etc.)"""
 
     # --- внутреннее --------------------------------------------------------
     _cached: str = field(default="", init=False, repr=False)
 
     # ------------------------------------------------------------------ utils
     def _filter_pool(self, engine: str) -> list[str]:
-        """Фильтрует по playwright движку доступную имперсонацию"""
+        """Filters available impersonation profiles by Playwright engine"""
 
         fam_set: set[str] = (
             {self.browser_family}
@@ -125,7 +125,7 @@ class ImpersonationConfig:
     # ---------------------------------------------------------------- public
     def choose(self, engine: str) -> str:
         """
-        Возвращает имя impersonation-профиля для текущего запроса
+        Returns the impersonation profile name for the current request.
         """
 
         def _pick(engine: str) -> str:
@@ -139,8 +139,8 @@ class ImpersonationConfig:
 
     def forge_headers(self, profile: str) -> dict[str, str]:
         """
-        Генерирует комплект real-browser-headers под *тот же* профиль,
-        используя *browserforge.HeaderGenerator*.
+        Generates a set of real-browser headers for *the same* profile,
+        using *browserforge.HeaderGenerator*.
         """
         if not self.rotate_headers:
             return {}

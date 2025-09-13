@@ -9,8 +9,8 @@ from .base import BrowserFamily, DesiredConfig, Family
 
 class CamoufoxFamily(BrowserFamily):
     """
-    Camoufox — отдельный рантайм. Запускаем как контекст-менеджер.
-    Stealth внешне НЕ нужен/запрещён (антибот внутри).
+    Camoufox — a separate runtime. Launched as a context manager.
+    Stealth is NOT needed/allowed (antibot is built-in).
     """
 
     def __init__(self) -> None:
@@ -31,7 +31,7 @@ class CamoufoxFamily(BrowserFamily):
     async def start(self, cfg: DesiredConfig) -> None:
         assert cfg.family == "camoufox", "wrong family for CamoufoxFamily"
         if cfg.stealth:
-            raise RuntimeError("stealth несовместим с engine='camoufox'.")
+            raise RuntimeError("stealth is incompatible with engine='camoufox'.")
 
         need_relaunch = (
             self._cm is None or self._browser is None or self._launch_opts_used != cfg.launch_opts
@@ -52,7 +52,7 @@ class CamoufoxFamily(BrowserFamily):
             self._cm = AsyncCamoufoxRT(**kwargs)
             browser_obj = await self._cm.__aenter__()
             if not isinstance(browser_obj, Browser):
-                raise RuntimeError("Camoufox вернул не Browser в неперсистентном режиме.")
+                raise RuntimeError("Camoufox did not return a Browser in non-persistent mode.")
             self._browser = browser_obj
 
         self._launch_opts_used = dict(cfg.launch_opts)

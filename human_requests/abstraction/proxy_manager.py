@@ -10,11 +10,11 @@ ProxyInput = str | Dict[str, str] | None
 @dataclass(frozen=True)
 class ParsedProxy:
     """
-    Унифицированное представление прокси:
+    Unified proxy representation:
     - scheme: http | https | socks5 | socks5h | ...
     - host:   example.com
-    - port:   8080 (или None)
-    - username/password: могут быть None
+    - port:   8080 (or None)
+    - username/password: may be None
     """
 
     scheme: str
@@ -26,10 +26,10 @@ class ParsedProxy:
     @classmethod
     def from_any(cls, value: ProxyInput) -> Optional["ParsedProxy"]:
         """
-        Поддерживает:
-        - строку URL:  http://user:pass@host:port, socks5://host:1080, ...
+        Supports:
+        - URL string:  http://user:pass@host:port, socks5://host:1080, ...
         - dict: {"server": "...", "username": "...", "password": "..."}
-        При конфликте кредов: URL приоритетнее dict-полей.
+        If credentials conflict: URL takes precedence over dict fields.
         """
         if not value:
             return None
@@ -55,7 +55,7 @@ class ParsedProxy:
 
     def for_playwright(self) -> Dict[str, str]:
         """
-        Преобразует ParsedProxy → playwright/pacthright/camoufox launch proxy dict:
+        Converts ParsedProxy → playwright/patchright/camoufox launch proxy dict:
         {"server": "scheme://host[:port]", "username": "...", "password": "..."}
         """
         server = f"{self.scheme}://{self.host}" + (f":{self.port}" if self.port else "")
@@ -68,9 +68,9 @@ class ParsedProxy:
 
     def for_curl(self) -> str:
         """
-        Преобразует ParsedProxy → curl_cffi proxies dict:
+        Converts ParsedProxy → curl_cffi proxies dict:
         {"http": url, "https": url, "all": url}
-        Пользуемся URL c userinfo: scheme://user:pass@host[:port]
+        Uses a URL with userinfo: scheme://user:pass@host[:port]
         """
         auth = ""
         if self.username:

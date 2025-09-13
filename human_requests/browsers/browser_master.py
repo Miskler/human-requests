@@ -13,8 +13,8 @@ Engine = Literal["chromium", "firefox", "webkit", "camoufox", "patchright"]
 
 class BrowserMaster:
     """
-    Агрегатор семейств. Держит текущий выбранный backend и делегирует ему запуск/закрытие.
-    Всегда отдаёт Browser. Без persistent context.
+    Family aggregator. Holds the currently selected backend and delegates launch/close.
+    Always returns a Browser. No persistent context.
     """
 
     def __init__(
@@ -64,7 +64,7 @@ class BrowserMaster:
     # ─────────────────────────── публичные методы ───────────────────────────
 
     async def start(self) -> None:
-        """Идемпотентный запуск текущего семейства. Меняет семейство при необходимости."""
+        """Idempotent launch of the current family. Switches family if necessary."""
         fam = self._select_family(self._engine)
         if self._family is None or (self._family.name != fam.name):
             # переключаемся на другое семейство — закрываем прежнее
@@ -84,7 +84,7 @@ class BrowserMaster:
         await self._family.start(cfg)
 
     async def close(self, *, camoufox: bool = True, playwright: bool = True) -> None:
-        """Селективное закрытие: camoufox → CamoufoxFamily; playwright → Playwright/Patchright."""
+        """Selective shutdown: camoufox → CamoufoxFamily; playwright → Playwright/Patchright."""
         if self._family is None:
             return
         if (self._family.name == "camoufox" and camoufox) or (

@@ -9,8 +9,8 @@ from .base import BrowserFamily, DesiredConfig, Family
 
 class PatchrightFamily(BrowserFamily):
     """
-    Patchright — drop-in Playwright, поддерживает только chromium.
-    Stealth внешне НЕ нужен/запрещён (он уже встроен).
+    Patchright — drop-in replacement for Playwright, supports only Chromium.
+    Stealth is NOT needed/allowed (it is already built-in).
     """
 
     def __init__(self) -> None:
@@ -31,7 +31,7 @@ class PatchrightFamily(BrowserFamily):
     async def start(self, cfg: DesiredConfig) -> None:
         assert cfg.family == "patchright", "wrong family for PatchrightFamily"
         if cfg.stealth:
-            raise RuntimeError("stealth несовместим с engine='patchright'.")
+            raise RuntimeError("stealth is incompatible with engine='patchright'.")
 
         need_relaunch = (
             self._pw is None or self._browser is None or self._launch_opts_used != cfg.launch_opts
@@ -43,8 +43,8 @@ class PatchrightFamily(BrowserFamily):
                 from patchright.async_api import async_playwright as async_patchright
             except Exception:
                 raise RuntimeError(
-                    "engine='patchright', но пакет 'patchright' не установлен. "
-                    "Установите: pip install patchright"
+                    "engine='patchright', but the 'patchright' package is not installed. "
+                    "Install it with: pip install patchright"
                 )
 
             self._pw = await async_patchright().__aenter__()
