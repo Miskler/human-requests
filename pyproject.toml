@@ -28,6 +28,7 @@ keywords = []
 dependencies = [
     "curl-cffi",
     "browserforge",
+    "ua-parser[regex]"
 ]
 
 [project.optional-dependencies]

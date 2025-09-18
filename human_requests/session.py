@@ -164,7 +164,7 @@ class Session:
         return await self._bm.new_context(storage_state=storage_state)
 
     async def start(self, *, origin: str = "https://example.com", wait_until: str = "load") -> None:
-        HTML_PATH = Path(__file__).parent / "fingerprint_gen.html"
+        HTML_PATH = Path(__file__).parent / "fingerprint" / "fingerprint_gen.html"
         _HTML_FINGERPRINT = HTML_PATH.read_text(encoding="utf-8")
         ctx: BrowserContext = await self._make_context()
 
@@ -188,6 +188,7 @@ class Session:
 
         self.fingerprint = Fingerprint(
             user_agent=data.get("user_agent"),
+            user_agent_client_hints=data.get("user_agent_client_hints"),
             platform=data.get("platform"),
             vendor=data.get("vendor"),
             languages=data.get("languages"),

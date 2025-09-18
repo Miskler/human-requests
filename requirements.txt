@@ -5,6 +5,7 @@ patchright
 
 curl-cffi
 browserforge
+ua-parser[regex]
 
 selectolax
 pytest
