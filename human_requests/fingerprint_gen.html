@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Fingerprint collector</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial}
+    .box{height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#444}
+    .spinner{width:40px;height:40px;border:4px solid #ddd;border-top-color:#444;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    pre{max-width:90vw;max-height:40vh;overflow:auto;background:#f7f7f7;padding:10px;border-radius:6px;border:1px solid #eee}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="spinner" aria-hidden="true"></div>
+    <div>Collect browser fingerprint...</div>
+    <pre id="out" aria-hidden="true">waiting…</pre>
+  </div>
+
+  <script>
+    (function collectAndPersist() {
+      try {
+        const fp = {
+          user_agent: navigator.userAgent || null,
+          platform: navigator.platform || null,
+          vendor: navigator.vendor || null,
+          languages: (navigator.languages && navigator.languages.slice()) || (navigator.language ? [navigator.language] : null),
+          timezone: (Intl && Intl.DateTimeFormat && Intl.DateTimeFormat().resolvedOptions && Intl.DateTimeFormat().resolvedOptions().timeZone) || null,
+        };
+
+        // Сохраняем в localStorage под ключом "fingerprint"
+        localStorage.setItem("fingerprint", JSON.stringify(fp));
+
+        // Для дебага на странице
+        const out = document.getElementById("out");
+        if (out) out.textContent = JSON.stringify(fp, null, 2);
+
+        // Также положим в window для прямого чтения при необходимости
+        window.__FINGERPRINT__ = fp;
+      } catch (err) {
+        try { localStorage.setItem("fingerprint", JSON.stringify({ error: String(err) })); } catch(_) {}
+      }
+    })();
+  </script>
+</body>
+</html>

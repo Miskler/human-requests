@@ -40,6 +40,8 @@ from curl_cffi import requests as cffi_requests
 from playwright.async_api import BrowserContext, Page
 from playwright.async_api import Request as PWRequest
 from playwright.async_api import Route
+import json
+from pathlib import Path
 
 from .abstraction.cookies import CookieManager
 from .abstraction.http import URL, HttpMethod
@@ -59,6 +61,7 @@ from .tools.http_utils import (
     guess_encoding,
     parse_set_cookie,
 )
+from .fingerprint import Fingerprint
 
 __all__ = ["Session"]
 
@@ -134,6 +137,9 @@ class Session:
         self.cookies: CookieManager = CookieManager([])
         """Storage of all active cookies."""
 
+        self.fingerprint: Optional[Fingerprint] = None
+        """Fingerprint of the browser."""
+
         self.local_storage: dict[str, dict[str, str]] = {}
         """localStorage from the last browser context (goto run)."""
 
@@ -146,6 +152,48 @@ class Session:
             stealth=self.playwright_stealth,
             launch_opts=self._make_browser_launch_opts(),  # первичный снапшот
         )
+
+    async def _make_context(self) -> BrowserContext:
+        self._bm.launch_opts = self._make_browser_launch_opts()
+        await self._bm.start()
+
+        storage_state = build_storage_state_for_context(
+            local_storage=self.local_storage,
+            cookie_manager=self.cookies,
+        )
+        return await self._bm.new_context(storage_state=storage_state)
+
+    async def start(self, *, origin: str = "https://example.com", wait_until: str = "load") -> None:
+        HTML_PATH = Path(__file__).parent / "fingerprint_gen.html"
+        _HTML_FINGERPRINT = HTML_PATH.read_text(encoding="utf-8")
+        ctx: BrowserContext = await self._make_context()
+
+        async def handler(route, request):
+            await route.fulfill(status=200, content_type="text/html; charset=utf-8", body=_HTML_FINGERPRINT)
+
+        await ctx.route(f"{origin}/**", handler)
+
+        async with await ctx.new_page() as page:
+            await page.goto(origin, wait_until="load", timeout=self.timeout*1000)
+
+        self.local_storage = await merge_storage_state_from_context(
+            ctx, cookie_manager=self.cookies
+        )
+
+        try:
+            raw = self.local_storage[origin]["fingerprint"]  # читаем только ПОСЛЕ закрытия
+            data = json.loads(raw)
+        except Exception as e:
+            raise RuntimeError("fingerprint отсутствует или битый JSON") from e
+
+        self.fingerprint = Fingerprint(
+            user_agent=data.get("user_agent"),
+            platform=data.get("platform"),
+            vendor=data.get("vendor"),
+            languages=data.get("languages"),
+            timezone=data.get("timezone"),
+        )
+
 
     # ──────────────── Launch args & proxy helpers ────────────────
     def _make_browser_launch_opts(self) -> dict[str, Any]:
@@ -301,15 +349,7 @@ class Session:
         Opens a page in the browser using a one-time context.
         Retries perform a "soft reload" without recreating the context.
         """
-        # Обновляем launch-аргументы в мастере перед стартом
-        self._bm.launch_opts = self._make_browser_launch_opts()
-        await self._bm.start()
-
-        storage_state = build_storage_state_for_context(
-            local_storage=self.local_storage,
-            cookie_manager=self.cookies,
-        )
-        ctx = await self._bm.new_context(storage_state=storage_state)
+        ctx = await self._make_context()
         page = await ctx.new_page()
         timeout_ms = int(self.timeout * 1000)
         attempts_left = self.page_retry if retry is None else int(retry)
@@ -346,15 +386,7 @@ class Session:
         Retries do not recreate the context/page — instead a "soft reload" is performed,
         reattaching the route on retry.
         """
-        # Обновляем launch-аргументы в мастере перед стартом
-        self._bm.launch_opts = self._make_browser_launch_opts()
-        await self._bm.start()
-
-        storage_state = build_storage_state_for_context(
-            local_storage=self.local_storage,
-            cookie_manager=self.cookies,
-        )
-        ctx: BrowserContext = await self._bm.new_context(storage_state=cast(Any, storage_state))
+        ctx: BrowserContext = await self._make_context()
         timeout_ms = int(self.timeout * 1000)
         attempts_left = self.page_retry if retry is None else int(retry)
 
@@ -405,6 +437,7 @@ class Session:
 
     # поддержка «async with»
     async def __aenter__(self) -> "Session":
+        await self.start()
         return self
 
     async def __aexit__(

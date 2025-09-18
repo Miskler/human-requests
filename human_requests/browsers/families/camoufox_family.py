@@ -49,6 +49,11 @@ class CamoufoxFamily(BrowserFamily):
 
             kwargs = dict(cfg.launch_opts)
             kwargs["persistent_context"] = False  # гарантируем неперсистентный режим
+            if "geoip" not in kwargs:
+                kwargs["geoip"] = True
+            if "humanize" not in kwargs:
+                kwargs["humanize"] = True
+
             self._cm = AsyncCamoufoxRT(**kwargs)
             browser_obj = await self._cm.__aenter__()
             if not isinstance(browser_obj, Browser):
