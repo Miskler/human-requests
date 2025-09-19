@@ -1,6 +1,6 @@
 playwright
 playwright-stealth
-camoufox
+camoufox[geoip]
 patchright
 
 curl-cffi
