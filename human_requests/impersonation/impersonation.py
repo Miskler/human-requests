@@ -70,7 +70,7 @@ class ImpersonationConfig:
             imps = ImpersonateProfileSelector(_ALL_PROFILES)
 
             if self.policy is Policy.SYNC_WITH_BROWSER:
-                hdrs = hg.generate(user_agent=engine.user_agent, locale=engine.languages)
+                hdrs = engine.headers
                 profile = imps.choose_best(engine)
             else:
                 hdrs = hg.generate(**self.browser_gen_launch_opts)

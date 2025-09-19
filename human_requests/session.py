@@ -168,7 +168,10 @@ class Session:
         _HTML_FINGERPRINT = HTML_PATH.read_text(encoding="utf-8")
         ctx: BrowserContext = await self._make_context()
 
+        headers = {}
+
         async def handler(route: Route, _req: PWRequest) -> None:
+            headers.update(_req.headers)
             await route.fulfill(
                 status=200, content_type="text/html; charset=utf-8", body=_HTML_FINGERPRINT
             )
@@ -192,6 +195,7 @@ class Session:
         self.fingerprint = Fingerprint(
             user_agent=data.get("user_agent"),
             user_agent_client_hints=data.get("user_agent_client_hints"),
+            headers=headers,
             platform=data.get("platform"),
             vendor=data.get("vendor"),
             languages=data.get("languages"),
@@ -240,8 +244,6 @@ class Session:
         """
         method_enum = method if isinstance(method, HttpMethod) else HttpMethod[str(method).upper()]
         base_headers = {k.lower(): v for k, v in (headers or {}).items()}
-        req_url = URL(full_url=url)
-        base_headers["host"] = req_url.domain_with_port
 
         # lazy curl session
         if self._curl is None:
@@ -253,8 +255,12 @@ class Session:
         assert isinstance(
             self.fingerprint, Fingerprint
         ), "fingerprint must be initialized in start()"
+
         imper_profile, hdrs = self.spoof.choose(self.fingerprint)
-        base_headers.update(hdrs)
+        
+        req_url = URL(full_url=url)
+        hdrs["host"] = req_url.domain_with_port
+        hdrs.update(base_headers)
 
         # Cookie header (фиксируем один раз на первую попытку)
         url_parts = urlsplit(url)
@@ -279,12 +285,11 @@ class Session:
         last_err: Exception | None = None
 
         async def _do_request() -> tuple[Any, float]:
-            req_headers = dict(base_headers)  # копия на попытку
             t0 = perf_counter()
             r = await curl.request(
                 method_enum.value,
                 url,
-                headers=req_headers,
+                headers=hdrs,
                 impersonate=cast(  # сузить тип до Literal набора curl_cffi
                     "cffi_requests.impersonate.BrowserTypeLiteral", imper_profile
                 ),

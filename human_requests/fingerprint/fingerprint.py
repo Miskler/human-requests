@@ -155,6 +155,7 @@ class Fingerprint:
     # сырые входы
     user_agent: Optional[str] = None
     user_agent_client_hints: Optional[Dict[str, Any]] = None
+    headers: Optional[Dict[str, str]] = None
     platform: Optional[str] = None
     vendor: Optional[str] = None
     languages: Optional[List[str]] = None
