@@ -257,7 +257,7 @@ class Session:
         ), "fingerprint must be initialized in start()"
 
         imper_profile, hdrs = self.spoof.choose(self.fingerprint)
-        
+
         req_url = URL(full_url=url)
         hdrs["host"] = req_url.domain_with_port
         hdrs.update(base_headers)
