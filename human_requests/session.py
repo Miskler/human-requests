@@ -72,13 +72,13 @@ class Session:
     def __init__(
         self,
         *,
-        timeout: float = 15.0,
+        timeout: float = 10.0,
         headless: bool = True,
         browser: Engine = "chromium",
         spoof: ImpersonationConfig | None = None,
         playwright_stealth: bool = True,
-        page_retry: int = 2,
-        direct_retry: int = 1,
+        page_retry: int = 3,
+        direct_retry: int = 2,
         browser_launch_opts: Mapping[str, Any] = {},
         proxy: str | None = None,
     ) -> None:
@@ -232,6 +232,7 @@ class Session:
         You must provide either an HttpMethod or its string representation, as well as a URL.
 
         Optionally, you can pass additional headers.
+        Always adds a standard browsers headers.
 
         Extra parameters can be passed through **kwargs to curl_cffi.AsyncSession.request
         (see their documentation for details).
@@ -239,11 +240,12 @@ class Session:
         """
         method_enum = method if isinstance(method, HttpMethod) else HttpMethod[str(method).upper()]
         base_headers = {k.lower(): v for k, v in (headers or {}).items()}
+        req_url = URL(full_url=url)
+        base_headers["host"] = req_url.domain_with_port
 
         # lazy curl session
         if self._curl is None:
             self._curl = cffi_requests.AsyncSession()
-
         curl = self._curl
         assert curl is not None  # для mypy: ниже уже не union
 
@@ -325,7 +327,7 @@ class Session:
         # models
         req_model = Request(
             method=method_enum,
-            url=URL(full_url=url),
+            url=req_url,
             headers=dict(base_headers),
             impersonate=imper_profile,
             body=data or json_body or files or None,

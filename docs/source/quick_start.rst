@@ -56,22 +56,24 @@ As a result, the site easily detected the bot.
 
 .. code-block:: python
 
-    from network_manager import Session, ImpersonationConfig, Policy, HttpMethod
+    from human_requests import Session
+    from human_requests.impersonation import ImpersonationConfig, Policy
+    from human_requests.abstraction.http import HttpMethod
     import asyncio
     import json
 
     async def main():
         # Session initialization
-        s = Session(headless=True,  # False is useful for debugging
+        s = Session(headless=False,  # False is useful for debugging
                     browser="camoufox",  # camoufox is best for large-scale requests, but may be less stable
                     # For non-camoufox (it already supports this by default), hides some automation signatures
                     # Recommended to enable for standard Playwright browsers
                     playwright_stealth=False,
                     spoof=ImpersonationConfig(
-                        policy=Policy.INIT_RANDOM,
-                        geo_country="RU",
-                        sync_with_engine=False
+                        policy=Policy.SYNC_WITH_BROWSER
                     ))
+        
+        await s.start()
 
         # Warm up the session (cookies + default local storage)
         async with s.goto_page("https://5ka.ru/", wait_until="networkidle") as page:
