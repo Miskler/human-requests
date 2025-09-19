@@ -68,6 +68,7 @@ async def _run_once(browser: str, stealth: str, mode: str) -> tuple[set[str], fl
         playwright_stealth=(stealth == "stealth"),
         spoof=cfg,
     )
+    await session.start()
 
     t0 = time.perf_counter()
     try:

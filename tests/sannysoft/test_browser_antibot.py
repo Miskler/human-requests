@@ -91,6 +91,7 @@ async def test_antibot_matrix(
         playwright_stealth=(stealth == "stealth"),
         spoof=cfg,
     )
+    await session.start()
 
     try:
         if mode == "goto":

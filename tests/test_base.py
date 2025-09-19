@@ -29,6 +29,7 @@ COOKIE_CHALLENGE = "js_challenge"
 @pytest_asyncio.fixture
 async def session_obj() -> Session:
     s = Session(headless=True)
+    await s.start()
     yield s
     await s.close()
 
