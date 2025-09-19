@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-from human_requests.impersonation import ImpersonationConfig
 from human_requests import Session
+from human_requests.impersonation import ImpersonationConfig
 from tests.sannysoft.sannysoft_parser import parse_sannysoft_bot
 from tests.sannysoft.tool import (
     html_via_goto,

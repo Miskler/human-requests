@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from typing import AsyncContextManager, Callable, Literal, Optional
 
@@ -34,6 +35,9 @@ class Response:
     """The duration of the request in seconds."""
 
     _render_callable: Optional[Callable[..., AsyncContextManager[Page]]] = None
+
+    def json(self) -> dict | list:
+        return json.loads(self.body)
 
     def render(
         self,

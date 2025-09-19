@@ -7,8 +7,8 @@ from typing import Iterable
 import pytest
 import pytest_asyncio
 
-from human_requests.abstraction.http import URL, HttpMethod
 from human_requests import Session
+from human_requests.abstraction.http import URL, HttpMethod
 
 # ---------------------------------------------------------------------------
 # Базовые адреса берём из ENV, чтобы не хардкодить инфраструктуру

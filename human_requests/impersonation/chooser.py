@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable, Optional, Sequence, Tuple
+from typing import Iterable, Sequence, Tuple
 
 from ..fingerprint import Fingerprint
 

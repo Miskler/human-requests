@@ -5,7 +5,6 @@ from enum import Enum, auto
 from typing import Any, Optional, get_args
 
 from browserforge.headers import HeaderGenerator
-from browserforge.headers.generator import SUPPORTED_BROWSERS as HD_BROWSERS
 from curl_cffi import requests as cffi_requests
 
 from ..fingerprint import Fingerprint
@@ -39,10 +38,13 @@ class ImpersonationConfig:
 
         cfg = ImpersonationConfig(
             policy=Policy.RANDOM_EACH_REQUEST,
-            browser_family=["chrome", "edge"],
-            min_version=120,
-            geo_country="DE",
-            sync_with_engine=True,
+            browser_gen_launch_opts={
+                browser=('chrome', 'firefox', 'safari', 'edge'),
+                os=('windows', 'macos', 'linux', 'android', 'ios'),
+                device=('desktop', 'mobile'),
+                locale=('en-US', 'en', 'de'),
+                http_version=2
+            }
         )
     """
 
@@ -52,6 +54,7 @@ class ImpersonationConfig:
 
     # --- profile selection filters ----------------------------------------
     browser_gen_launch_opts: dict[str, Any] = field(default_factory=dict)
+    """Не применяется при policy=Policy.SYNC_WITH_BROWSER"""
 
     # --- внутреннее --------------------------------------------------------
     _cached: Optional[dict[str, Any]] = field(default=None, init=False, repr=False)

@@ -142,44 +142,27 @@ class Fingerprint:
     device_type: Optional[str] = field(default=None, init=False)
     engine: Optional[str] = field(default=None, init=False)
 
-    # дополнительно: раскрытые поля UACH (если есть)
-    uach_architecture: Optional[str] = field(default=None, init=False)
-    uach_bitness: Optional[str] = field(default=None, init=False)
-    uach_model: Optional[str] = field(default=None, init=False)
-    uach_platform: Optional[str] = field(default=None, init=False)
-    uach_platform_version: Optional[str] = field(default=None, init=False)
-    uach_brands: Optional[BrandList] = field(default=None, init=False)
-    uach_full_version_list: Optional[BrandList] = field(default=None, init=False)
-    uach_mobile: Optional[bool] = field(default=None, init=False)
+    uach: Optional[UserAgentClientHints] = field(default=None, init=False)
+    ua: Optional[UserAgent] = field(default=None, init=False)
 
     def __post_init__(self) -> None:
-        ua = UserAgent(self.user_agent)
-        uach = UserAgentClientHints(self.user_agent_client_hints)
+        self.ua = UserAgent(self.user_agent)
+        self.uach = UserAgentClientHints(self.user_agent_client_hints)
 
         # приоритет UACH → UA
-        self.browser_name = _coalesce(uach.primary_brand_name, ua.browser_name)
-        self.browser_version = _coalesce(uach.primary_brand_version, ua.browser_version)
+        self.browser_name = _coalesce(self.uach.primary_brand_name, self.ua.browser_name)
+        self.browser_version = _coalesce(self.uach.primary_brand_version, self.ua.browser_version)
 
         # ОС из UACH platform/version, иначе из UA
-        self.os_name = _coalesce(uach.platform, ua.os_name)
-        self.os_version = _coalesce(uach.platform_version, ua.os_version)
+        self.os_name = _coalesce(self.uach.platform, self.ua.os_name)
+        self.os_version = _coalesce(self.uach.platform_version, self.ua.os_version)
 
         # тип устройства: UACH.mobile (bool) → 'mobile'/'desktop', иначе из UA
         self.device_type = (
-            ("mobile" if uach.mobile else "desktop")
-            if isinstance(uach.mobile, bool)
-            else ua.device_type
+            ("mobile" if self.uach.mobile else "desktop")
+            if isinstance(self.uach.mobile, bool)
+            else self.ua.device_type
         )
 
         # движок — только из UA (UACH его не даёт)
-        self.engine = ua.engine
-
-        # раскрытые UACH-поля «как есть»
-        self.uach_architecture = uach.architecture
-        self.uach_bitness = uach.bitness
-        self.uach_model = uach.model
-        self.uach_platform = uach.platform
-        self.uach_platform_version = uach.platform_version
-        self.uach_brands = uach.brands
-        self.uach_full_version_list = uach.full_version_list
-        self.uach_mobile = uach.mobile
+        self.engine = self.ua.engine
