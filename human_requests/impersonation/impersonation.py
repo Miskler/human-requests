@@ -82,6 +82,6 @@ class ImpersonationConfig:
             }
 
         return (
-            self._cached["profile"],
-            self._cached["headers"],
+            str(self._cached["profile"]),
+            dict(self._cached["headers"]),
         )

@@ -268,7 +268,7 @@ class Session:
             url_parts, base_headers, list(self.cookies)
         )
         if cookie_header:
-            base_headers["cookie"] = cookie_header
+            hdrs["cookie"] = cookie_header
 
         # proxies по умолчанию из Session.proxy, если пользователь не передал свои
         pp_user_proxies = ParsedProxy.from_any(kwargs.pop("proxy", None))
