@@ -168,7 +168,7 @@ class Session:
         _HTML_FINGERPRINT = HTML_PATH.read_text(encoding="utf-8")
         ctx: BrowserContext = await self._make_context()
 
-        async def handler(route, request):
+        async def handler(route: Route, _req: PWRequest) -> None:
             await route.fulfill(
                 status=200, content_type="text/html; charset=utf-8", body=_HTML_FINGERPRINT
             )
@@ -248,6 +248,9 @@ class Session:
         assert curl is not None  # для mypy: ниже уже не union
 
         # spoof UA / headers
+        assert isinstance(
+            self.fingerprint, Fingerprint
+        ), "fingerprint must be initialized in start()"
         imper_profile, hdrs = self.spoof.choose(self.fingerprint)
         base_headers.update(hdrs)
 

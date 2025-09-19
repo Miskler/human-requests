@@ -37,7 +37,11 @@ class Response:
     _render_callable: Optional[Callable[..., AsyncContextManager[Page]]] = None
 
     def json(self) -> dict | list:
-        return json.loads(self.body)
+        to_return = json.loads(self.body)
+        assert isinstance(to_return, list) or isinstance(
+            to_return, dict
+        ), f"Response body is not JSON: {type(self.body).__name__}"
+        return to_return
 
     def render(
         self,

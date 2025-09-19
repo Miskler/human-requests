@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional
 
 from ua_parser import parse as ua_parse  # pip install ua-parser
 
@@ -11,7 +11,11 @@ BrandList = List[Brand]
 
 
 # ---------- утилиты ----------
-def _coalesce(*vals):
+def _coalesce(*vals: Any) -> Any:
+    """
+    Возвращает первый «содержательный» элемент из vals
+    (не None, не пустую строку, не пустые список/словарь), иначе None.
+    """
     for v in vals:
         if v not in (None, "", [], {}):
             return v
@@ -19,8 +23,15 @@ def _coalesce(*vals):
 
 
 def _join_version(*parts: Optional[str]) -> Optional[str]:
-    parts = [p for p in parts if p not in (None, "", "0-0")]  # последний хак — на случай мусора
-    return ".".join(parts) if parts else None
+    """
+    Склеивает части версии через точку, пропуская пустые/None/мусор вроде '0-0'.
+    """
+    filtered: List[str] = []
+    for p in parts:
+        if p is None or p in ("", "0-0"):
+            continue
+        filtered.append(p)
+    return ".".join(filtered) if filtered else None
 
 
 def _primary_brand(brands: Optional[BrandList]) -> Optional[Brand]:
@@ -46,45 +57,60 @@ class UserAgent:
     def __post_init__(self) -> None:
         s = self.raw or ""
         r = ua_parse(s)  # Result(user_agent=..., os=..., device=...)
-        # браузер
-        ua = r.user_agent
-        self.browser_name = ua.family or None
-        self.browser_version = _join_version(
-            ua.major, ua.minor, ua.patch, getattr(ua, "patch_minor", None)
-        )
-        # ОС
-        os = r.os
-        self.os_name = os.family or None
-        self.os_version = _join_version(
-            os.major, os.minor, os.patch, getattr(os, "patch_minor", None)
-        )
-        # устройство
-        dev = r.device
-        self.device_brand = getattr(dev, "brand", None) or None
-        self.device_model = getattr(dev, "model", None) or None
-        # тип устройства (быстро и без «магии»)
-        low = s.lower()
-        self.device_type = (
-            "tablet"
-            if ("tablet" in low or "ipad" in low)
-            else "mobile" if "mobile" in low else "desktop"
-        )
-        # движок
-        self.engine = (
-            "Gecko"
-            if ("gecko/" in low and "firefox/" in low)
-            else (
-                "Blink"
-                if ("applewebkit/" in low and re.search(r"(chrome|crios|edg|opr|yabrowser)/", low))
-                else ("WebKit" if "applewebkit/" in low else None)
+
+        # --- браузер ---
+        ua = getattr(r, "user_agent", None)
+        if ua is not None:
+            self.browser_name = ua.family or None
+            self.browser_version = _join_version(
+                getattr(ua, "major", None),
+                getattr(ua, "minor", None),
+                getattr(ua, "patch", None),
+                getattr(ua, "patch_minor", None),
             )
-        )
+
+        # --- ОС ---
+        os = getattr(r, "os", None)
+        if os is not None:
+            self.os_name = os.family or None
+            self.os_version = _join_version(
+                getattr(os, "major", None),
+                getattr(os, "minor", None),
+                getattr(os, "patch", None),
+                getattr(os, "patch_minor", None),
+            )
+
+        # --- устройство ---
+        dev = getattr(r, "device", None)
+        if dev is not None:
+            self.device_brand = getattr(dev, "brand", None) or None
+            self.device_model = getattr(dev, "model", None) or None
+
+        # тип устройства (просто и без эвристик уровня ML)
+        low = s.lower()
+        if "tablet" in low or "ipad" in low:
+            self.device_type = "tablet"
+        elif "mobile" in low:
+            self.device_type = "mobile"
+        else:
+            self.device_type = "desktop"
+
+        # движок по явным признакам
+        if "gecko/" in low and "firefox/" in low:
+            self.engine = "Gecko"
+        elif "applewebkit/" in low and re.search(r"(chrome|crios|edg|opr|yabrowser)/", low):
+            self.engine = "Blink"
+        elif "applewebkit/" in low:
+            self.engine = "WebKit"
+        else:
+            self.engine = None
 
 
 # ---------- UserAgentClientHints ----------
 @dataclass
 class UserAgentClientHints:
-    # ожидаем структуру как в твоём объекте: {"low_entropy": {...}, "high_entropy": {...}} или {"supported": false}
+    # ожидаем структуру:
+    # {"low_entropy": {...}, "high_entropy": {...}} или {"supported": false}
     raw: Optional[Dict[str, Any]] = None
 
     supported: Optional[bool] = field(default=None, init=False)
@@ -103,13 +129,13 @@ class UserAgentClientHints:
     primary_brand_version: Optional[str] = field(default=None, init=False)
 
     def __post_init__(self) -> None:
-        d = self.raw or {}
-        low = d.get("low_entropy") or {}
-        high = d.get("high_entropy") or {}
+        d: Dict[str, Any] = self.raw or {}
+        low: Dict[str, Any] = d.get("low_entropy") or {}
+        high: Dict[str, Any] = d.get("high_entropy") or {}
 
         self.supported = False if d.get("supported") is False else (None if not d else True)
         self.mobile = low.get("mobile", high.get("mobile"))
-        self.brands = low.get("brands") or high.get("brands") or None
+        self.brands = (low.get("brands") or high.get("brands")) or None
         self.full_version_list = high.get("fullVersionList") or None
         self.ua_full_version = high.get("uaFullVersion") or None
         self.architecture = high.get("architecture") or None
@@ -158,11 +184,10 @@ class Fingerprint:
         self.os_version = _coalesce(self.uach.platform_version, self.ua.os_version)
 
         # тип устройства: UACH.mobile (bool) → 'mobile'/'desktop', иначе из UA
-        self.device_type = (
-            ("mobile" if self.uach.mobile else "desktop")
-            if isinstance(self.uach.mobile, bool)
-            else self.ua.device_type
-        )
+        if isinstance(self.uach.mobile, bool):
+            self.device_type = "mobile" if self.uach.mobile else "desktop"
+        else:
+            self.device_type = self.ua.device_type
 
         # движок — только из UA (UACH его не даёт)
         self.engine = self.ua.engine
