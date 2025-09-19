@@ -55,7 +55,8 @@ version = {attr = "human_requests.__version__"}
 include = ["human_requests*"]
 
 [tool.setuptools.package-data]
-"human_requests" = ["py.typed"]
+"human_requests" = ["py.typed", "fingerprint/*.html"]
+
 
 
 [tool.black]
