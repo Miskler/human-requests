@@ -17,7 +17,7 @@ sys.path.insert(0, str(EXT_DIR))                      # подключаем п�
 project   = "human_requests"
 author    = "Miskler"
 copyright = "2025, Miskler"
-from human_requests import __version__
+from human_requests.impersonation import __version__
 release   = __version__
 
 # ──────────────────────────────────────────────────────────────────────────────

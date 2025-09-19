@@ -18,6 +18,9 @@ class Request:
     headers: dict
     """The headers of the request."""
 
+    impersonate: str
+    """The impersonation profile used in the request."""
+
     body: Optional[str | list | dict]
     """The body of the request."""
 

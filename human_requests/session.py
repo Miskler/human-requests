@@ -30,7 +30,9 @@ Additional
 
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
+from pathlib import Path
 from time import perf_counter
 from types import TracebackType
 from typing import Any, AsyncGenerator, Literal, Mapping, Optional, cast
@@ -40,8 +42,6 @@ from curl_cffi import requests as cffi_requests
 from playwright.async_api import BrowserContext, Page
 from playwright.async_api import Request as PWRequest
 from playwright.async_api import Route
-import json
-from pathlib import Path
 
 from .abstraction.cookies import CookieManager
 from .abstraction.http import URL, HttpMethod
@@ -49,7 +49,8 @@ from .abstraction.proxy_manager import ParsedProxy
 from .abstraction.request import Request
 from .abstraction.response import Response
 from .browsers import BrowserMaster, Engine
-from .impersonation import ImpersonationConfig
+from .fingerprint import Fingerprint
+from .impersonation.impersonation import ImpersonationConfig
 from .tools.helper_tools import (
     build_storage_state_for_context,
     handle_nav_with_retries,
@@ -61,7 +62,6 @@ from .tools.http_utils import (
     guess_encoding,
     parse_set_cookie,
 )
-from .fingerprint import Fingerprint
 
 __all__ = ["Session"]
 
@@ -169,12 +169,14 @@ class Session:
         ctx: BrowserContext = await self._make_context()
 
         async def handler(route, request):
-            await route.fulfill(status=200, content_type="text/html; charset=utf-8", body=_HTML_FINGERPRINT)
+            await route.fulfill(
+                status=200, content_type="text/html; charset=utf-8", body=_HTML_FINGERPRINT
+            )
 
         await ctx.route(f"{origin}/**", handler)
 
         async with await ctx.new_page() as page:
-            await page.goto(origin, wait_until="load", timeout=self.timeout*1000)
+            await page.goto(origin, wait_until="load", timeout=self.timeout * 1000)
 
         self.local_storage = await merge_storage_state_from_context(
             ctx, cookie_manager=self.cookies
@@ -185,6 +187,7 @@ class Session:
             data = json.loads(raw)
         except Exception as e:
             raise RuntimeError("fingerprint отсутствует или битый JSON") from e
+        self.local_storage[origin].pop("fingerprint", None)
 
         self.fingerprint = Fingerprint(
             user_agent=data.get("user_agent"),
@@ -194,7 +197,6 @@ class Session:
             languages=data.get("languages"),
             timezone=data.get("timezone"),
         )
-
 
     # ──────────────── Launch args & proxy helpers ────────────────
     def _make_browser_launch_opts(self) -> dict[str, Any]:
@@ -246,8 +248,8 @@ class Session:
         assert curl is not None  # для mypy: ниже уже не union
 
         # spoof UA / headers
-        imper_profile = self.spoof.choose(self.browser_name)
-        base_headers.update(self.spoof.forge_headers(imper_profile))
+        imper_profile, hdrs = self.spoof.choose(self.fingerprint)
+        base_headers.update(hdrs)
 
         # Cookie header (фиксируем один раз на первую попытку)
         url_parts = urlsplit(url)
@@ -322,6 +324,7 @@ class Session:
             method=method_enum,
             url=URL(full_url=url),
             headers=dict(base_headers),
+            impersonate=imper_profile,
             body=data or json_body or files or None,
             cookies=sent_cookies,
         )
