@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from human_requests import Session
-from human_requests.impersonation import ImpersonationConfig
+from human_requests.impersonation import ImpersonationConfig, Policy
 from tests.sannysoft.sannysoft_parser import parse_sannysoft_bot
 from tests.sannysoft.tool import (
     html_via_goto,
@@ -83,7 +83,7 @@ async def test_antibot_matrix(
     if browser in BROWSERS_UNSUPPORT_STEALTH and stealth == "stealth":
         pytest.skip(f"playwright_stealth=True is incompatible with browser='{browser}'")
 
-    cfg = ImpersonationConfig(sync_with_engine=True)
+    cfg = ImpersonationConfig(policy=Policy.SYNC_WITH_BROWSER)
     session = Session(
         timeout=TIMEOUT_MS / 1000.0,  # сек → для Session
         headless=HEADLESS,

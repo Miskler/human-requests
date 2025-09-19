@@ -14,7 +14,7 @@ from typing import Any
 from tqdm import tqdm  # прогрессбар
 
 from human_requests import Session
-from human_requests.impersonation import ImpersonationConfig
+from human_requests.impersonation import ImpersonationConfig, Policy
 from tests.sannysoft.sannysoft_parser import parse_sannysoft_bot
 from tests.sannysoft.tool import (
     collect_failed_props,
@@ -60,7 +60,7 @@ async def _run_once(browser: str, stealth: str, mode: str) -> tuple[set[str], fl
     if browser in BROWSERS_UNSUPPORT_STEALTH and stealth == "stealth":
         return set(), 0.0  # несовместимо — пропускаем без времени
 
-    cfg = ImpersonationConfig(sync_with_engine=True)
+    cfg = ImpersonationConfig(policy=Policy.SYNC_WITH_BROWSER)
     session = Session(
         timeout=15,
         headless=HEADLESS,
