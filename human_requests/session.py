@@ -33,7 +33,7 @@ from __future__ import annotations
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
-from time import perf_counter
+from time import perf_counter, time
 from types import TracebackType
 from typing import Any, AsyncGenerator, Literal, Mapping, Optional, cast
 from urllib.parse import urlsplit
@@ -59,7 +59,6 @@ from .tools.helper_tools import (
 from .tools.http_utils import (
     collect_set_cookie_headers,
     compose_cookie_header,
-    guess_encoding,
     parse_set_cookie,
 )
 
@@ -322,9 +321,6 @@ class Session:
         resp_cookies = parse_set_cookie(raw_sc, url_parts.hostname or "")
         self.cookies.add(resp_cookies)
 
-        charset = guess_encoding(resp_headers)
-        body_text = r.content.decode(charset, errors="replace")
-
         data = kwargs.get("data")
         json_body = kwargs.get("json")
         files = kwargs.get("files")
@@ -343,9 +339,10 @@ class Session:
             url=URL(full_url=str(r.url)),
             headers=resp_headers,
             cookies=resp_cookies,
-            body=body_text,
+            raw=r.content,
             status_code=r.status_code,
             duration=duration,
+            end_time=time(),
             _render_callable=self._render_response,
         )
         return resp_model

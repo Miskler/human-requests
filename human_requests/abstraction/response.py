@@ -1,9 +1,11 @@
 import json
 from dataclasses import dataclass
+from time import time
 from typing import AsyncContextManager, Callable, Literal, Optional
 
 from playwright.async_api import Page
 
+from ..tools.http_utils import guess_encoding
 from .cookies import Cookie
 from .http import URL
 from .request import Request
@@ -25,8 +27,8 @@ class Response:
     cookies: list[Cookie]
     """The cookies of the response."""
 
-    body: str
-    """The body of the response."""
+    raw: bytes
+    """The raw body of the response."""
 
     status_code: int
     """The status code of the response."""
@@ -34,7 +36,16 @@ class Response:
     duration: float
     """The duration of the request in seconds."""
 
+    end_time: float
+    """Current time in seconds since the Epoch."""
+
     _render_callable: Optional[Callable[..., AsyncContextManager[Page]]] = None
+
+    @property
+    def body(self) -> str:
+        """The body of the response."""
+        charset = guess_encoding(self.headers)
+        return self.raw.decode(charset, errors="replace")
 
     def json(self) -> dict | list:
         to_return = json.loads(self.body)
@@ -42,6 +53,10 @@ class Response:
             to_return, dict
         ), f"Response body is not JSON: {type(self.body).__name__}"
         return to_return
+
+    def seconds_ago(self) -> float:
+        """How long ago was the request?"""
+        return time() - self.end_time
 
     def render(
         self,
