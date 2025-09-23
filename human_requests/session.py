@@ -4,7 +4,7 @@ core.session — unified stateful session for *curl_cffi* and *Playwright*-compa
 Main Methods
 ============
 * ``Session.request``   — low-level HTTP request (curl_cffi) with cookie jar.
-* ``Session.goto_page`` — opens a URL in the browser, returns a Page inside
+* ``Session.make_page`` — opens a new page in the browser, returns a HumanPage inside
   a context manager; upon exit synchronizes cookies + localStorage.
 * ``Response.render``   — offline render of a pre-fetched Response.
 
@@ -50,12 +50,9 @@ from .abstraction.request import Request
 from .abstraction.response import Response
 from .browsers import BrowserMaster, Engine
 from .fingerprint import Fingerprint
+from .human_context import HumanContext
+from .human_page import HumanPage
 from .impersonation.impersonation import ImpersonationConfig
-from .tools.helper_tools import (
-    build_storage_state_for_context,
-    handle_nav_with_retries,
-    merge_storage_state_from_context,
-)
 from .tools.http_utils import (
     collect_set_cookie_headers,
     compose_cookie_header,
@@ -152,20 +149,20 @@ class Session:
             launch_opts=self._make_browser_launch_opts(),  # первичный снапшот
         )
 
-    async def _make_context(self) -> BrowserContext:
+    async def make_context(self) -> HumanContext:
         self._bm.launch_opts = self._make_browser_launch_opts()
         await self._bm.start()
 
-        storage_state = build_storage_state_for_context(
-            local_storage=self.local_storage,
-            cookie_manager=self.cookies,
-        )
-        return await self._bm.new_context(storage_state=storage_state)
+        return await HumanContext.create(session=self)
 
-    async def start(self, *, origin: str = "https://example.com", wait_until: str = "load") -> None:
+    async def start(
+        self,
+        *,
+        origin: str = "https://example.com",
+        wait_until: Literal["commit", "load", "domcontentloaded", "networkidle"] = "load",
+    ) -> None:
         HTML_PATH = Path(__file__).parent / "fingerprint" / "fingerprint_gen.html"
         _HTML_FINGERPRINT = HTML_PATH.read_text(encoding="utf-8")
-        ctx: BrowserContext = await self._make_context()
 
         headers = {}
 
@@ -175,14 +172,14 @@ class Session:
                 status=200, content_type="text/html; charset=utf-8", body=_HTML_FINGERPRINT
             )
 
+        ctx: HumanContext = await self.make_context()
+
         await ctx.route(f"{origin}/**", handler)
 
         async with await ctx.new_page() as page:
-            await page.goto(origin, wait_until="load", timeout=self.timeout * 1000)
+            await page.goto(origin, wait_until=wait_until, timeout=self.timeout * 1000)
 
-        self.local_storage = await merge_storage_state_from_context(
-            ctx, cookie_manager=self.cookies
-        )
+        await ctx.close()
 
         try:
             raw = self.local_storage[origin]["fingerprint"]  # читаем только ПОСЛЕ закрытия
@@ -349,40 +346,32 @@ class Session:
 
     # ────── browser nav ──────
     @asynccontextmanager
-    async def goto_page(
+    async def make_page(
         self,
-        url: str,
         *,
-        wait_until: Literal["commit", "load", "domcontentloaded", "networkidle"] = "commit",
-        retry: int | None = None,
-    ) -> AsyncGenerator[Page, None]:
+        context: Optional[HumanContext] = None,
+    ) -> AsyncGenerator[HumanPage, None]:
         """
-        Opens a page in the browser using a one-time context.
-        Retries perform a "soft reload" without recreating the context.
+        Open a page and navigate to `url`.
+
+        If `context` is provided:
+          - Use that context.
+          - DO NOT close it (and do not auto-synchronize) on exit.
+
+        If `context` is None:
+          - Create a one-shot HumanContext and close it (with auto-sync) on exit.
         """
-        ctx = await self._make_context()
-        page = await ctx.new_page()
-        timeout_ms = int(self.timeout * 1000)
-        attempts_left = self.page_retry if retry is None else int(retry)
+        external_ctx = context is not None
+        ctx: HumanContext = context or await self.make_context()
+        page: HumanPage = await ctx.new_page()
 
         try:
-            await handle_nav_with_retries(
-                page,
-                target_url=url,
-                wait_until=wait_until,
-                timeout_ms=timeout_ms,
-                attempts=attempts_left,
-                on_retry=None,
-            )
             yield page
         finally:
-            self.local_storage = await merge_storage_state_from_context(
-                ctx, cookie_manager=self.cookies
-            )
             await page.close()
-            await ctx.close()
+            if not external_ctx:
+                await ctx.close()
 
-    # ────── Offline render ──────
     @asynccontextmanager
     async def _render_response(
         self,
@@ -390,16 +379,19 @@ class Session:
         *,
         wait_until: Literal["load", "domcontentloaded", "networkidle"] = "domcontentloaded",
         retry: int | None = None,
-    ) -> AsyncGenerator[Page, None]:
+        context: Optional[HumanContext] = None,
+    ) -> AsyncGenerator[HumanPage, None]:
         """
-        Offline render of a Response: creates a temporary context (with our storage_state),
-        intercepts the first request and responds with the prepared body.
-        Retries do not recreate the context/page — instead a "soft reload" is performed,
-        reattaching the route on retry.
+        Offline render of a Response:
+          - Intercepts the first request and fulfills it with `response`.
+          - Retries re-attach the route without recreating the context/page.
+
+        Context handling is the same as in `make_page()`:
+          - Provided `context` is reused and NOT closed.
+          - Otherwise, a one-shot context is created and closed with auto-sync.
         """
-        ctx: BrowserContext = await self._make_context()
-        timeout_ms = int(self.timeout * 1000)
-        attempts_left = self.page_retry if retry is None else int(retry)
+        external_ctx = context is not None
+        ctx: HumanContext = context or await self.make_context()
 
         async def _attach_route_once() -> None:
             await ctx.unroute("**/*")
@@ -414,28 +406,25 @@ class Session:
             await ctx.route("**/*", handler, times=1)
 
         await _attach_route_once()
-        page = await ctx.new_page()
+        page: HumanPage = await ctx.new_page()
 
         try:
 
             async def _on_retry() -> None:
                 await _attach_route_once()
 
-            await handle_nav_with_retries(
-                page,
-                target_url=response.url.full_url,
-                wait_until=wait_until,
-                timeout_ms=timeout_ms,
-                attempts=attempts_left,
+            await page.goto(
+                url=response.url.full_url,
+                retry=retry,
                 on_retry=_on_retry,
+                wait_until=wait_until,
             )
+
             yield page
         finally:
-            self.local_storage = await merge_storage_state_from_context(
-                ctx, cookie_manager=self.cookies
-            )
             await page.close()
-            await ctx.close()
+            if not external_ctx:
+                await ctx.close()
 
     # ────── cleanup ──────
     async def close(self) -> None:

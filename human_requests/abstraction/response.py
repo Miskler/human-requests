@@ -1,14 +1,16 @@
 import json
 from dataclasses import dataclass
 from time import time
-from typing import AsyncContextManager, Callable, Literal, Optional
-
-from playwright.async_api import Page
+from typing import TYPE_CHECKING, AsyncContextManager, Callable, Literal, Optional
 
 from ..tools.http_utils import guess_encoding
 from .cookies import Cookie
 from .http import URL
 from .request import Request
+
+if TYPE_CHECKING:
+    from ..human_context import HumanContext
+    from ..human_page import HumanPage
 
 
 @dataclass(frozen=True)
@@ -39,7 +41,7 @@ class Response:
     end_time: float
     """Current time in seconds since the Epoch."""
 
-    _render_callable: Optional[Callable[..., AsyncContextManager[Page]]] = None
+    _render_callable: Optional[Callable[..., AsyncContextManager["HumanPage"]]] = None
 
     @property
     def body(self) -> str:
@@ -62,11 +64,12 @@ class Response:
         self,
         wait_until: Literal["commit", "load", "domcontentloaded", "networkidle"] = "commit",
         retry: int = 2,
-    ) -> AsyncContextManager[Page]:
+        context: Optional["HumanContext"] = None,
+    ) -> AsyncContextManager["HumanPage"]:
         """Renders the response content in the current browser.
         It will look like we requested it through the browser from the beginning.
 
         Recommended to use in cases when the server returns a JS challenge instead of a response."""
         if self._render_callable:
-            return self._render_callable(self, wait_until=wait_until, retry=retry)
+            return self._render_callable(self, wait_until=wait_until, retry=retry, context=context)
         raise ValueError("Not set render callable for Response")

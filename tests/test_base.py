@@ -93,7 +93,8 @@ async def test_direct_html_base_sets_cookie(session_obj: Session):
 # ===========================================================================
 @pytest.mark.asyncio
 async def test_goto_html_base_sets_cookie(session_obj: Session):
-    async with session_obj.goto_page(f"{HTML_BASE}/base") as page:
+    async with session_obj.make_page() as page:
+        await page.goto(f"{HTML_BASE}/base")
         html = await page.content()
         assert html.strip()
     assert _cookie_value(session_obj.cookies, COOKIE_BASE) is not None
@@ -115,11 +116,12 @@ async def test_goto_html_base_sets_cookie(session_obj: Session):
 
 
 # ===========================================================================
-# 4. goto_page → одностраничный JS-челлендж (/api/challenge)
+# 4. make_page → одностраничный JS-челлендж (/api/challenge)
 # ===========================================================================
 @pytest.mark.asyncio
 async def test_goto_single_page_challenge(session_obj: Session):
-    async with session_obj.goto_page(f"{API_BASE}/challenge") as page:
+    async with session_obj.make_page() as page:
+        await page.goto(f"{API_BASE}/challenge")
         body = await page.text_content("body")
         data = json.loads(body)
         assert data.get("ok") is True
@@ -187,11 +189,12 @@ async def test_direct_single_page_challenge_with_render(session_obj: Session):
 
 
 # ===========================================================================
-# 6. goto_page → redirect-challenge + далее protected
+# 6. make_page → redirect-challenge + далее protected
 # ===========================================================================
 @pytest.mark.asyncio
 async def test_goto_redirect_challenge_and_protected(session_obj: Session):
-    async with session_obj.goto_page(f"{HTML_BASE}/redirect-challenge") as page:
+    async with session_obj.make_page() as page:
+        await page.goto(f"{HTML_BASE}/redirect-challenge")
         data = json.loads(await page.text_content("body"))
         assert data.get("ok") is True
     assert _cookie_value(session_obj.cookies, COOKIE_CHALLENGE) is not None
