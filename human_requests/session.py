@@ -33,17 +33,12 @@ from __future__ import annotations
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
-from time import perf_counter, time
 from types import TracebackType
-from typing import Any, AsyncGenerator, Literal, Mapping, Optional, cast
-from urllib.parse import urlsplit
+from typing import Any, AsyncGenerator, Literal, Mapping, Optional
 
-from curl_cffi import requests as cffi_requests
-from playwright.async_api import BrowserContext, Page
 from playwright.async_api import Request as PWRequest
 from playwright.async_api import Route
 
-from .abstraction.cookies import CookieManager
 from .abstraction.http import URL, HttpMethod
 from .abstraction.proxy_manager import ParsedProxy
 from .abstraction.request import Request
@@ -52,26 +47,17 @@ from .browsers import BrowserMaster, Engine
 from .fingerprint import Fingerprint
 from .human_context import HumanContext
 from .human_page import HumanPage
-from .impersonation.impersonation import ImpersonationConfig
-from .tools.http_utils import (
-    collect_set_cookie_headers,
-    compose_cookie_header,
-    parse_set_cookie,
-)
 
 __all__ = ["Session"]
 
 
 class Session:
-    """curl_cffi.AsyncSession + BrowserMaster + CookieManager."""
-
     def __init__(
         self,
         *,
         timeout: float = 10.0,
         headless: bool = True,
         browser: Engine = "chromium",
-        spoof: ImpersonationConfig | None = None,
         playwright_stealth: bool = True,
         page_retry: int = 3,
         direct_retry: int = 2,
@@ -96,9 +82,6 @@ class Session:
 
         self.browser_name: Engine = browser
         """Current browser (chromium/firefox/webkit/camoufox/patchright)."""
-
-        self.spoof: ImpersonationConfig = spoof or ImpersonationConfig()
-        """Impersonation settings (user-agent, TLS, client-hello)."""
 
         self.playwright_stealth: bool = bool(playwright_stealth)
         """Hide certain automation signatures?
@@ -129,18 +112,8 @@ class Session:
         b. playwright-like dict
         """
 
-        # Cookie/localStorage state
-        self.cookies: CookieManager = CookieManager([])
-        """Storage of all active cookies."""
-
         self.fingerprint: Optional[Fingerprint] = None
         """Fingerprint of the browser."""
-
-        self.local_storage: dict[str, dict[str, str]] = {}
-        """localStorage from the last browser context (goto run)."""
-
-        # Низкоуровневый HTTP
-        self._curl: Optional[cffi_requests.AsyncSession] = None
 
         # Браузерный движок — через мастер (всегда отдаёт Browser)
         self._bm: BrowserMaster = BrowserMaster(
@@ -149,11 +122,11 @@ class Session:
             launch_opts=self._make_browser_launch_opts(),  # первичный снапшот
         )
 
-    async def make_context(self) -> HumanContext:
+    async def new_context(self, **kwargs) -> HumanContext:
         self._bm.launch_opts = self._make_browser_launch_opts()
         await self._bm.start()
 
-        return await HumanContext.create(session=self)
+        return await HumanContext.create(session=self, **kwargs)
 
     async def start(
         self,
@@ -179,14 +152,14 @@ class Session:
         async with await ctx.new_page() as page:
             await page.goto(origin, wait_until=wait_until, timeout=self.timeout * 1000)
 
-        await ctx.close()
+            try:
+                storage = await page.localStorage()
+                raw = storage.get("fingerprint", "")
+                data = json.loads(raw)
+            except Exception as e:
+                raise RuntimeError("fingerprint отсутствует или битый JSON") from e
 
-        try:
-            raw = self.local_storage[origin]["fingerprint"]  # читаем только ПОСЛЕ закрытия
-            data = json.loads(raw)
-        except Exception as e:
-            raise RuntimeError("fingerprint отсутствует или битый JSON") from e
-        self.local_storage[origin].pop("fingerprint", None)
+        await ctx.close()
 
         self.fingerprint = Fingerprint(
             user_agent=data.get("user_agent"),
@@ -217,160 +190,20 @@ class Session:
 
         return opts
 
-    # ────── HTTP через curl_cffi ──────
-    async def request(
-        self,
-        method: HttpMethod | str,
-        url: str,
-        *,
-        headers: Optional[Mapping[str, str]] = None,
-        retry: int | None = None,
-        **kwargs: Any,
-    ) -> Response:
-        """
-        Standard fast request via curl_cffi.
-        You must provide either an HttpMethod or its string representation, as well as a URL.
-
-        Optionally, you can pass additional headers.
-        Always adds a standard browsers headers.
-
-        Extra parameters can be passed through **kwargs to curl_cffi.AsyncSession.request
-        (see their documentation for details).
-        Retries are performed ONLY on cffi Timeout: ``curl_cffi.requests.exceptions.Timeout``.
-        """
-        method_enum = method if isinstance(method, HttpMethod) else HttpMethod[str(method).upper()]
-        base_headers = {k.lower(): v for k, v in (headers or {}).items()}
-
-        # lazy curl session
-        if self._curl is None:
-            self._curl = cffi_requests.AsyncSession()
-        curl = self._curl
-        assert curl is not None  # для mypy: ниже уже не union
-
-        # spoof UA / headers
-        assert isinstance(
-            self.fingerprint, Fingerprint
-        ), "fingerprint must be initialized in start()"
-
-        imper_profile, hdrs = self.spoof.choose(self.fingerprint)
-
-        req_url = URL(full_url=url)
-        hdrs["host"] = req_url.domain_with_port
-        hdrs.update(base_headers)
-
-        # Cookie header (фиксируем один раз на первую попытку)
-        url_parts = urlsplit(url)
-        cookie_header, sent_cookies = compose_cookie_header(
-            url_parts, base_headers, list(self.cookies)
-        )
-        if cookie_header:
-            hdrs["cookie"] = cookie_header
-
-        # proxies по умолчанию из Session.proxy, если пользователь не передал свои
-        pp_user_proxies = ParsedProxy.from_any(kwargs.pop("proxy", None))
-        user_proxies = None
-        if pp_user_proxies:
-            user_proxies = pp_user_proxies.for_curl()
-
-        pp_default_proxies = ParsedProxy.from_any(self.proxy)
-        default_proxies = None
-        if pp_default_proxies:
-            default_proxies = pp_default_proxies.for_curl()
-
-        attempts_left = self.direct_retry if retry is None else int(retry)
-        last_err: Exception | None = None
-
-        async def _do_request() -> tuple[Any, float]:
-            t0 = perf_counter()
-            r = await curl.request(
-                method_enum.value,
-                url,
-                headers=hdrs,
-                impersonate=cast(  # сузить тип до Literal набора curl_cffi
-                    "cffi_requests.impersonate.BrowserTypeLiteral", imper_profile
-                ),
-                timeout=self.timeout,
-                proxy=user_proxies if user_proxies is not None else default_proxies,
-                **kwargs,
-            )
-            duration = perf_counter() - t0
-            return r, duration
-
-        # первая попытка + мягкие повторы на Timeout
-        try:
-            r, duration = await _do_request()
-        except cffi_requests.exceptions.Timeout as e:
-            last_err = e
-            while attempts_left > 0:
-                attempts_left -= 1
-                try:
-                    r, duration = await _do_request()
-                    last_err = None
-                    break
-                except cffi_requests.exceptions.Timeout as e2:
-                    last_err = e2
-            if last_err is not None:
-                raise last_err
-
-        # response → cookies
-        resp_headers = {k.lower(): v for k, v in r.headers.items()}
-        raw_sc = collect_set_cookie_headers(r.headers)
-        resp_cookies = parse_set_cookie(raw_sc, url_parts.hostname or "")
-        self.cookies.add(resp_cookies)
-
-        data = kwargs.get("data")
-        json_body = kwargs.get("json")
-        files = kwargs.get("files")
-
-        # models
-        req_model = Request(
-            method=method_enum,
-            url=req_url,
-            headers=dict(base_headers),
-            impersonate=imper_profile,
-            body=data or json_body or files or None,
-            cookies=sent_cookies,
-        )
-        resp_model = Response(
-            request=req_model,
-            url=URL(full_url=str(r.url)),
-            headers=resp_headers,
-            cookies=resp_cookies,
-            raw=r.content,
-            status_code=r.status_code,
-            duration=duration,
-            end_time=time(),
-            _render_callable=self._render_response,
-        )
-        return resp_model
-
     # ────── browser nav ──────
     @asynccontextmanager
-    async def make_page(
+    async def new_page(
         self,
-        *,
-        context: Optional[HumanContext] = None,
+        **kwargs: Any,
     ) -> AsyncGenerator[HumanPage, None]:
-        """
-        Open a page and navigate to `url`.
-
-        If `context` is provided:
-          - Use that context.
-          - DO NOT close it (and do not auto-synchronize) on exit.
-
-        If `context` is None:
-          - Create a one-shot HumanContext and close it (with auto-sync) on exit.
-        """
-        external_ctx = context is not None
-        ctx: HumanContext = context or await self.make_context()
+        ctx: HumanContext = await self.new_context(**kwargs)
         page: HumanPage = await ctx.new_page()
 
         try:
             yield page
         finally:
             await page.close()
-            if not external_ctx:
-                await ctx.close()
+            await ctx.close()
 
     @asynccontextmanager
     async def _render_response(
@@ -391,7 +224,7 @@ class Session:
           - Otherwise, a one-shot context is created and closed with auto-sync.
         """
         external_ctx = context is not None
-        ctx: HumanContext = context or await self.make_context()
+        ctx: HumanContext = context or await self.new_context()
 
         async def _attach_route_once() -> None:
             await ctx.unroute("**/*")
@@ -428,12 +261,7 @@ class Session:
 
     # ────── cleanup ──────
     async def close(self) -> None:
-        # Закрываем браузерные движки
         await self._bm.close()
-        # Закрываем HTTP-сессию
-        if self._curl:
-            await self._curl.close()
-            self._curl = None
 
     # поддержка «async with»
     async def __aenter__(self) -> "Session":

@@ -8,10 +8,6 @@ from playwright.async_api import BrowserContext, Page
 from .human_page import HumanPage
 
 if TYPE_CHECKING:
-    from playwright._impl._api_structures import LocalStorageEntry, OriginState
-    from playwright.async_api import StorageState, StorageStateCookie
-
-    from .abstraction.cookies import CookieManager
     from .human_page import HumanPage
     from .session import Session
 
@@ -33,18 +29,6 @@ class _WrapperCache(weakref.WeakKeyDictionary[Page, "HumanPage"]):
 class HumanContext(BrowserContext):
     """
     A type-compatible wrapper over Playwright's BrowserContext.
-
-    Responsibilities:
-      - Bootstrap from Session (cookies + localStorage) on creation.
-      - Provide stable HumanPage wrappers via `pages` and `new_page()`.
-      - Synchronize context state back to Session (`synchronize()`).
-      - On `close()`, synchronize then close the underlying context.
-
-    Implementation:
-      - Inherits from BrowserContext for isinstance-compatibility.
-      - Stores the underlying context in `_raw` (does not call BrowserContext.__init__).
-      - Proxies unknown attributes to `_raw` via __getattribute__/__setattr__.
-      - Internal storage helpers (_build_storage_state / _merge_from_context) live here.
     """
 
     __slots__ = ("_raw", "_session", "_wrappers")
@@ -57,12 +41,8 @@ class HumanContext(BrowserContext):
     # ---------- factory ----------
 
     @classmethod
-    async def create(cls, *, session: "Session") -> "HumanContext":
-        storage_state = cls._build_storage_state(
-            local_storage=session.local_storage,
-            cookie_manager=session.cookies,
-        )
-        raw_ctx: BrowserContext = await session._bm.new_context(storage_state=storage_state)
+    async def create(cls, *, session: "Session", **kwargs) -> "HumanContext":
+        raw_ctx: BrowserContext = await session._bm.new_context(**kwargs)
         return cls(raw_ctx=raw_ctx, session=session)
 
     # ---------- core props ----------
@@ -88,20 +68,9 @@ class HumanContext(BrowserContext):
 
     # ---------- sync lifecycle ----------
 
-    async def synchronize(self) -> None:
-        """
-        Pull storage_state from underlying context and push it to Session:
-        - cookies: add/update in Session CookieManager
-        - localStorage: exact overwrite in Session.local_storage
-        """
-        new_ls = await self._merge_from_context(cookie_manager=self.session.cookies)
-        self.session.local_storage = new_ls
-
-    async def close(self) -> None:
-        try:
-            await self.synchronize()
-        finally:
-            await self.raw.close()
+    async def localStorage(self, **kwargs) -> dict[str, dict[str, str]]:
+        ls = await self.storage_state(**kwargs)
+        return {o["origin"]: {e["name"]: e["value"] for e in o.get("localStorage", [])} for o in ls.get("origins", [])}
 
     # ---------- transparent proxying ----------
 
@@ -148,46 +117,3 @@ class HumanContext(BrowserContext):
 
     def __repr__(self) -> str:
         return f"<HumanContext wrapping {self.raw!r}>"
-
-    # ---------- internals ----------
-
-    @staticmethod
-    def _build_storage_state(
-        *,
-        local_storage: dict[str, dict[str, str]],
-        cookie_manager: "CookieManager",
-    ) -> "StorageState":
-        cookie_list: list["StorageStateCookie"] = cookie_manager.to_playwright()
-        origins: list["OriginState"] = []
-        for origin, kv in local_storage.items():
-            if not kv:
-                continue
-            entries: list["LocalStorageEntry"] = [{"name": k, "value": v} for k, v in kv.items()]
-            origins.append({"origin": origin, "localStorage": entries})
-        return {"cookies": cookie_list, "origins": origins}
-
-    async def _merge_from_context(
-        self,
-        *,
-        cookie_manager: "CookieManager",
-    ) -> dict[str, dict[str, str]]:
-        state = await self.raw.storage_state()
-
-        new_ls: dict[str, dict[str, str]] = {}
-        for o in state.get("origins", []) or []:
-            origin = str(o.get("origin", "")) or ""
-            if not origin:
-                continue
-            kv: dict[str, str] = {}
-            for pair in o.get("localStorage", []) or []:
-                name = str(pair.get("name", "")) or ""
-                value = "" if pair.get("value") is None else str(pair.get("value"))
-                if name:
-                    kv[name] = value
-            new_ls[origin] = kv
-
-        cookies_list = state.get("cookies", []) or []
-        if cookies_list:
-            cookie_manager.add_from_playwright(cookies_list)
-
-        return new_ls

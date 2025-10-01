@@ -6,6 +6,8 @@ from playwright.async_api import Page
 from playwright.async_api import Response as PWResponse
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
+from urllib.parse import urlsplit
+
 if TYPE_CHECKING:
     from .human_context import HumanContext
     from .session import Session
@@ -39,9 +41,6 @@ class HumanPage(Page):
 
     # ---------- lifecycle / sync ----------
 
-    async def synchronize(self) -> None:
-        await self.context.synchronize()
-
     async def goto(
         self,
         url: str,
@@ -50,9 +49,6 @@ class HumanPage(Page):
         retry: Optional[int] = None,
         on_retry: Optional[Callable[[], Awaitable[None]]] = None,
         # standard Playwright kwargs (not exhaustive; forwarded via **kwargs):
-        wait_until: Optional[Literal["commit", "load", "domcontentloaded", "networkidle"]] = None,
-        timeout: Optional[float] = None,
-        referer: Optional[str] = None,
         **kwargs: Any,
     ) -> Optional[PWResponse]:
         """
@@ -64,12 +60,6 @@ class HumanPage(Page):
         # Build the kwargs for the underlying goto/reload calls:
 
         base_kwargs: dict[str, Any] = {"timeout": int(self.session.timeout * 1000)}
-        if wait_until is not None:
-            base_kwargs["wait_until"] = wait_until
-        if timeout is not None:
-            base_kwargs["timeout"] = timeout
-        if referer is not None:
-            base_kwargs["referer"] = referer
         if kwargs:
             base_kwargs.update(kwargs)
 
@@ -93,8 +83,11 @@ class HumanPage(Page):
             if last_err is not None:
                 raise last_err
 
-    async def close(self, *args: Any, **kwargs: Any) -> None:
-        await self.raw.close(*args, **kwargs)
+    async def localStorage(self, **kwargs) -> dict[str, str]:
+        ls = await self.context.localStorage(**kwargs)
+        url_parts = urlsplit(self.url)
+        origin = f"{url_parts.scheme}://{url_parts.netloc}"
+        return ls.get(origin, {})
 
     # ---------- transparent proxying ----------
 

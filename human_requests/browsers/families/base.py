@@ -56,12 +56,11 @@ class BrowserFamily(ABC):
 
     async def new_context(
         self,
-        *,
-        storage_state: StorageState | str | Path | None = None,
+        **kwargs: Any,
     ) -> BrowserContext:
         await self._ensure()
         assert self.browser is not None
-        return await self.browser.new_context(storage_state=storage_state)
+        return await self.browser.new_context(**kwargs)
 
     async def _ensure(self) -> None:
         if self.browser is None:

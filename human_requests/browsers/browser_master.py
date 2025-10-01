@@ -95,12 +95,11 @@ class BrowserMaster:
 
     async def new_context(
         self,
-        *,
-        storage_state: StorageState | str | Path | None = None,
+        **kwargs: Any,
     ) -> BrowserContext:
         await self.start()
         assert self._family is not None
-        return await self._family.new_context(storage_state=storage_state)
+        return await self._family.new_context(**kwargs)
 
     # ─────────────────────────── внутреннее ───────────────────────────
 
