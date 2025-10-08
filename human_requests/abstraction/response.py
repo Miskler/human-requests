@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from time import time
 from typing import TYPE_CHECKING, AsyncContextManager, Callable, Literal, Optional
 
-from ..tools.http_utils import guess_encoding
 from .cookies import Cookie
 from .http import URL
 from .request import Request
@@ -46,7 +45,7 @@ class Response:
     @property
     def body(self) -> str:
         """The body of the response."""
-        charset = guess_encoding(self.headers)
+        charset = self.headers.get("content-type", "utf-8").split("charset=")[-1]
         return self.raw.decode(charset, errors="replace")
 
     def json(self) -> dict | list:

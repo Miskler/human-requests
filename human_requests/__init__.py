@@ -1,4 +1,4 @@
-from .session import Session
+from .human_browser import Session
 
 __all__ = ["Session"]
 

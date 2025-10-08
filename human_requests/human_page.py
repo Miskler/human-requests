@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, cast
+from typing_extensions import override
 
 from playwright.async_api import Page
 from playwright.async_api import Response as PWResponse
@@ -10,7 +11,6 @@ from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
     from .human_context import HumanContext
-    from .session import Session
 
 
 class HumanPage(Page):
@@ -18,29 +18,27 @@ class HumanPage(Page):
     A thin, type-compatible wrapper over Playwright's Page.
     """
 
-    __slots__ = ("_raw", "_hc")
-
-    def __init__(self, *, raw_page: Page, human_context: "HumanContext") -> None:
-        # store to slots directly to avoid proxy logic and slot errors
-        object.__setattr__(self, "_raw", raw_page)
-        object.__setattr__(self, "_hc", human_context)
-
     # ---------- core identity ----------
 
-    @property
-    def raw(self) -> Page:
-        return object.__getattribute__(self, "_raw")
 
     @property
+    @override
     def context(self) -> "HumanContext":
-        return object.__getattribute__(self, "_hc")
+        # рантайм остаётся прежним; только уточняем тип
+        return cast("HumanContext", super().context)
 
-    @property
-    def session(self) -> "Session":
-        return self.context.session
+    @staticmethod
+    def replace(playwright_page: Page) -> HumanPage:
+        from .human_context import HumanContext  # avoid circular import
+        if isinstance(playwright_page.context, HumanContext) is False:
+            raise TypeError("The provided Page's context is not a HumanContext")
+
+        playwright_page.__class__ = HumanPage
+        return playwright_page  # type: ignore[return-value]
 
     # ---------- lifecycle / sync ----------
 
+    @override
     async def goto(
         self,
         url: str,
@@ -59,22 +57,18 @@ class HumanPage(Page):
         """
         # Build the kwargs for the underlying goto/reload calls:
 
-        base_kwargs: dict[str, Any] = {"timeout": int(self.session.timeout * 1000)}
-        if kwargs:
-            base_kwargs.update(kwargs)
-
         try:
-            return await self.raw.goto(url, **base_kwargs)
+            return await super().goto(url, **kwargs)
         except PlaywrightTimeoutError as last_err:
-            attempts_left = int(retry) if retry is not None else self.session.page_retry
+            attempts_left = int(retry)+1 if retry is not None else 1 # +1 т.к. первый запрос базис
             while attempts_left > 0:
                 attempts_left -= 1
                 if on_retry is not None:
                     await on_retry()
                 try:
                     # Soft refresh with the SAME wait_until/timeout
-                    await self.raw.reload(
-                        **{k: base_kwargs[k] for k in ("wait_until", "timeout") if k in base_kwargs}
+                    await super().reload(
+                        **{k: kwargs[k] for k in ("wait_until", "timeout") if k in kwargs}
                     )
                     last_err = None
                     break
@@ -83,54 +77,11 @@ class HumanPage(Page):
             if last_err is not None:
                 raise last_err
 
-    async def localStorage(self, **kwargs) -> dict[str, str]:
-        ls = await self.context.localStorage(**kwargs)
+    async def local_storage(self, **kwargs) -> dict[str, str]:
+        ls = await self.context.local_storage(**kwargs)
         url_parts = urlsplit(self.url)
         origin = f"{url_parts.scheme}://{url_parts.netloc}"
         return ls.get(origin, {})
 
-    # ---------- transparent proxying ----------
-
-    def __getattribute__(self, name: str) -> Any:
-        try:
-            return object.__getattribute__(self, name)
-        except AttributeError:
-            # иначе — прокси на raw Page
-            raw = object.__getattribute__(self, "_raw")
-            return getattr(raw, name)
-
-    def __setattr__(self, name: str, value):
-        # Критично: системные поля всегда ставим локально
-        if name in self.__slots__:
-            object.__setattr__(self, name, value)
-            return
-
-        # Если у класса/обёртки есть такой атрибут (поле/свойство с setter’ом) — пишем в неё
-        if hasattr(type(self), name):
-            object.__setattr__(self, name, value)
-            return
-
-        # Если _raw ещё не инициализирован, ставим локально (этап __init__)
-        try:
-            raw = object.__getattribute__(self, "_raw")
-        except AttributeError:
-            object.__setattr__(self, name, value)
-            return
-
-        # По умолчанию — пробрасываем установку на оригинальную Page
-        setattr(raw, name, value)
-
-    def __delattr__(self, name: str):
-        # Удаление — та же логика
-        if name in self.__slots__ or hasattr(type(self), name):
-            object.__delattr__(self, name)
-            return
-        try:
-            raw = object.__getattribute__(self, "_raw")
-        except AttributeError:
-            object.__delattr__(self, name)
-            return
-        delattr(raw, name)
-
     def __repr__(self) -> str:
-        return f"<HumanPage wrapping {self.raw!r}>"
+        return f"<HumanPage wrapping {super().__repr__()!r}>"
