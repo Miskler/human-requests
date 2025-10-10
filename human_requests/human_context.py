@@ -12,11 +12,12 @@ if TYPE_CHECKING:
 
 # ---- tiny helper to avoid repeating "get-or-create" for page wrappers ----
 
+
 class HumanContext(BrowserContext):
     """
     A type-compatible wrapper over Playwright's BrowserContext.
     """
-    
+
     @staticmethod
     def replace(playwright_context: BrowserContext) -> HumanContext:
         playwright_context.__class__ = HumanContext
@@ -34,7 +35,10 @@ class HumanContext(BrowserContext):
 
     async def local_storage(self, **kwargs) -> dict[str, dict[str, str]]:
         ls = await self.storage_state(**kwargs)
-        return {o["origin"]: {e["name"]: e["value"] for e in o.get("localStorage", [])} for o in ls.get("origins", [])}
+        return {
+            o["origin"]: {e["name"]: e["value"] for e in o.get("localStorage", [])}
+            for o in ls.get("origins", [])
+        }
 
     def __repr__(self) -> str:
         return f"<HumanContext wrapping {super().__repr__()!r}>"

@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from time import time
 from typing import TYPE_CHECKING, AsyncContextManager, Callable, Literal, Optional
 
-from .cookies import Cookie
 from .http import URL
 from .request import Request
 
@@ -25,7 +24,7 @@ class Response:
     headers: dict
     """The headers of the response."""
 
-    cookies: list[Cookie]
+    cookies: list[str]
     """The cookies of the response."""
 
     raw: bytes

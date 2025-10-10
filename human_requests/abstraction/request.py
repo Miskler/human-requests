@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from .cookies import Cookie
 from .http import URL, HttpMethod
 
 
@@ -18,11 +17,8 @@ class Request:
     headers: dict
     """The headers of the request."""
 
-    impersonate: str
-    """The impersonation profile used in the request."""
-
     body: Optional[str | list | dict]
     """The body of the request."""
 
-    cookies: list[Cookie]
+    cookies: list[str]
     """The cookies passed in the request."""
