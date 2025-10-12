@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional
+from playwright.async_api import Cookie
 
 from .http import URL, HttpMethod
 
@@ -20,5 +21,5 @@ class Request:
     body: Optional[str | list | dict]
     """The body of the request."""
 
-    cookies: list[str]
+    cookies: list[Cookie]
     """The cookies passed in the request."""

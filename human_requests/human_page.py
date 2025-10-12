@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, cast, List
 from urllib.parse import urlsplit
 
-from playwright.async_api import Page
+from playwright.async_api import Page, Cookie
 from playwright.async_api import Response as PWResponse
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from typing_extensions import overload, override
@@ -37,6 +37,7 @@ class HumanPage(Page):
 
     # ---------- lifecycle / sync ----------
 
+    @override
     async def goto(
         self,
         url: str,
@@ -119,6 +120,17 @@ class HumanPage(Page):
     def origin(self) -> str:
         url_parts = urlsplit(self.url)
         return f"{url_parts.scheme}://{url_parts.netloc}"
+
+    async def cookies(self) -> List[Cookie]:
+        """BrowserContext.cookies
+
+        Cookies for the current page URL. Alias for `page.context.cookies([page.url])`.
+
+        Returns
+        -------
+        List[{name: str, value: str, domain: str, path: str, expires: float, httpOnly: bool, secure: bool, sameSite: Union["Lax", "None", "Strict"], partitionKey: Union[str, None]}]
+        """
+        return await self.context.cookies([self.url])
 
     async def local_storage(self, **kwargs) -> dict[str, str]:
         ls = await self.context.local_storage(**kwargs)
