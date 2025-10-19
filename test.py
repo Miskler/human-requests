@@ -11,15 +11,13 @@ async def main():
         
         #pprint(await browser.fingerprint())
         ctx = await browser.new_context()
-        page = await browser.new_page()
+        page = await ctx.new_page()
         await page.goto("https://5ka.ru", wait_until="networkidle")
         await page.wait_for_selector(selector="next-route-announcer", state="attached")
 
         ls = await page.local_storage()
 
-        default_store_location = json.loads(ls[page.origin]["DeliveryPanelStore"])
-
-        pprint(default_store_location)
+        default_store_location = json.loads(ls["DeliveryPanelStore"])
 
         result = await page.fetch(
             url=f"https://5d.5ka.ru/api/catalog/v2/stores/{default_store_location['selectedAddress']['sapCode']}/categories?mode=delivery",
@@ -28,7 +26,7 @@ async def main():
             headers={  # Static headers, without them you’ll get a 400
                 "X-PLATFORM": "webapp",
                 # Device ID saved by site JS during warm-up
-                "X-DEVICE-ID": ls["https://5ka.ru"]["deviceId"],
+                "X-DEVICE-ID": ls["deviceId"],
                 "X-APP-VERSION": "0.1.1.dev"
             }
         )

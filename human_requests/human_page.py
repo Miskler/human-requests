@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, cast, List
 from urllib.parse import urlsplit
 import json
 import time
-import asyncio
 
 import base64
 
@@ -288,81 +287,25 @@ class HumanPage(Page):
         """
         return await self.context.cookies([self.url])
 
-    async def _collect_web_storage(
-        self,
-        store: Literal["localStorage", "sessionStorage"],
-    ) -> dict[str, dict[str, str]]:
-        """
-        Сбор содержимого выбранного Web Storage по всем фреймам страницы.
-        Возвращает: { origin: { key: value, ... }, ... }
-        """
-        # Собираем список фреймов один раз
-        frames = list(getattr(self, "frames", []))
+    async def local_storage(self, **kwargs) -> dict[str, str]:
+        ls = await self.context.local_storage(**kwargs)
+        return ls.get(self.origin, {})
 
-        async def _from_frame(frame) -> Optional[tuple[str, dict[str, str]]]:
-            url: str = getattr(frame, "url", "") or ""
-            if not (url.startswith("http://") or url.startswith("https://")):
-                return None  # about:blank/data:/chrome-*, и т.п. — пропускаем
-            u = urlsplit(url)
-            origin = f"{u.scheme}://{u.netloc}"
-
-            try:
-                data = await frame.evaluate(
-                    """
-                    (which) => {
-                    try {
-                        const s = (which in window) ? window[which] : null;
-                        if (!s) return null;
-                        const out = {};
-                        for (let i = 0; i < s.length; i++) {
-                        const k = s.key(i);
-                        out[k] = s.getItem(k);
-                        }
-                        return out;
-                    } catch (_) {
-                        return null;
-                    }
-                    }
-                    """,
-                    store,
-                )
-            except Exception:
-                data = None
-
-            if not data:
-                return None
-            return (origin, data)
-
-        # Параллельно обходим все фреймы
-        results = await asyncio.gather(*[_from_frame(f) for f in frames], return_exceptions=True)
-
-        # Аггрегируем по origin
-        aggregated: dict[str, dict[str, str]] = {}
-        for res in results:
-            if isinstance(res, tuple):
-                origin, data = res
-                if origin in aggregated:
-                    aggregated[origin].update(data)   # несколько фреймов одного origin
-                else:
-                    aggregated[origin] = dict(data)
-        return aggregated
-
-
-    async def local_storage(self) -> dict[str, dict[str, str]]:
-        """
-        Прочитать localStorage во всех видимых фреймах (<iframe></<iframe> элементы, в т.ч. main).
-        Возвращает: { origin: { key: value, ... }, ... }
-        """
-        return await self._collect_web_storage("localStorage")
-
-
-    async def session_storage(self) -> dict[str, dict[str, str]]:
-        """
-        Прочитать sessionStorage во всех видимых фреймах (<iframe></iframe> элементы, в т.ч. main).
-        Возвращает: { origin: { key: value, ... }, ... }
-        """
-        return await self._collect_web_storage("sessionStorage")
-
+    async def session_storage(self) -> dict[str, str]:
+        return await self.evaluate(
+            """
+            (which) => {
+            try {
+                const s = (which in window) ? window[which] : null;
+                if (!s) return null;
+                return s;
+            } catch (_) {
+                return null;
+            }
+            }
+            """,
+            "sessionStorage",
+        )
 
     def __repr__(self) -> str:
         return f"<HumanPage wrapping {super().__repr__()!r}>"
