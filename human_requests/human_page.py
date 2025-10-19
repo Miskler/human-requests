@@ -1,12 +1,21 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, cast, List
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, cast, List, Literal
 from urllib.parse import urlsplit
+import json
+import time
+import asyncio
+
+import base64
 
 from playwright.async_api import Page, Cookie
 from playwright.async_api import Response as PWResponse
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
-from typing_extensions import overload, override
+from typing_extensions import override
+
+from .abstraction.http import HttpMethod, URL
+from .abstraction.request import FetchRequest
+from .abstraction.response import FetchResponse
 
 if TYPE_CHECKING:
     from .human_context import HumanContext
@@ -115,6 +124,153 @@ class HumanPage(Page):
                     last_err = e
             if last_err is not None:
                 raise last_err
+    
+    
+    async def fetch(
+        self,
+        url: str,
+        *,
+        method: HttpMethod = HttpMethod.GET,
+        headers: Optional[dict[str, str]] = None,
+        body: Optional[str | list | dict] = None,
+        credentials: Literal["omit", "same-origin", "include"] = "include",
+        mode: Literal["cors", "no-cors", "same-origin"] = "cors",
+        redirect: Literal["follow", "error", "manual"] = "follow",
+        referrer: Optional[str] = None,
+        timeout_ms: int = 30000,
+    ) -> FetchResponse:
+        """
+        Тонкая прослойка над JS fetch: выполняет запрос внутри страницы и возвращает ResponseModel.
+        • Без route / wait_for_event.
+        • raw — ВСЕГДА распакованные байты (если тело доступно JS).
+        • При opaque-ответе тело/заголовки могут быть недоступны — это ограничение CORS.
+        """
+        declared_headers = {k.lower(): v for k, v in (headers or {}).items()}
+        js_headers = {k: v for k, v in declared_headers.items() if k != "referer"}
+        js_ref = referrer or declared_headers.get("referer")
+
+        js_body: Any = body
+        if isinstance(body, (dict, list)) and declared_headers.get("content-type", "").lower().startswith("application/json"):
+            js_body = json.dumps(body, ensure_ascii=False)
+
+        start_t = time.perf_counter()
+
+        result = await self.evaluate(
+            """
+            async ({ url, method, headers, body, credentials, mode, redirect, ref, timeoutMs }) => {
+            const ctrl = new AbortController();
+            const id = setTimeout(() => ctrl.abort("timeout"), timeoutMs);
+            try {
+                const init = { method, headers, credentials, mode, redirect, signal: ctrl.signal };
+                if (ref) init.referrer = ref;
+                if (body !== undefined && body !== null) init.body = body;
+
+                const r = await fetch(url, init);
+
+                // Заголовки (если CORS позволит)
+                const headersObj = {};
+                try { r.headers.forEach((v, k) => headersObj[k.toLowerCase()] = v); } catch {}
+
+                // Тело читаем как ArrayBuffer (это уже РАСПАКОВАННЫЕ байты), кодируем в base64
+                let bodyB64 = null;
+                try {
+                const ab = await r.arrayBuffer();
+                const u8 = new Uint8Array(ab);
+                const chunk = 0x8000;
+                let binary = "";
+                for (let i = 0; i < u8.length; i += chunk) {
+                    binary += String.fromCharCode.apply(null, u8.subarray(i, i + chunk));
+                }
+                bodyB64 = btoa(binary);
+                } catch { bodyB64 = null; }
+
+                return {
+                ok: true,
+                finalUrl: r.url,
+                status: r.status,
+                type: r.type,        // basic | cors | opaque | opaque-redirect
+                redirected: r.redirected,
+                headers: headersObj, // может быть пустым при CORS
+                bodyB64,             // base64 распакованных байтов или null
+                };
+            } catch (e) {
+                return { ok: false, error: String(e) };
+            } finally {
+                clearTimeout(id);
+            }
+            }
+            """,
+            dict(
+                url=url,
+                method=method.value,
+                headers=js_headers or {},
+                body=js_body,
+                credentials=credentials,
+                mode=mode,
+                redirect=redirect,
+                ref=js_ref,
+                timeoutMs=timeout_ms,
+            ),
+        )
+
+        duration = time.perf_counter() - start_t
+        end_epoch = time.time()
+
+        if not result.get("ok"):
+            raise RuntimeError(f"fetch failed: {result.get('error')}")
+
+        # bytes в raw: распакованные (если body доступен)
+        b64 = result.get("bodyB64")
+        raw = base64.b64decode(b64) if isinstance(b64, str) else b""
+
+        # Нормализуем заголовки: если raw есть, уберём transport-атрибуты, чтобы не путать потребителя
+        resp_headers = {k.lower(): v for k, v in (result.get("headers") or {}).items()}
+        if raw:
+            resp_headers.pop("content-encoding", None)
+            resp_headers.pop("content-length", None)
+
+        req_model = FetchRequest(
+            method=method,
+            url=URL(full_url=url),
+            headers=declared_headers,
+            body=body,
+        )
+
+        resp_model = FetchResponse(
+            request=req_model,
+            url=URL(full_url=result.get("finalUrl") or url),
+            headers=resp_headers,
+            raw=raw,     # всегда bytes; пусто если CORS не дал читать тело
+            status_code=int(result.get("status", 0)),
+            duration=duration,
+            end_time=end_epoch,
+        )
+        return resp_model
+
+
+    async def wait_for_request(
+        self,
+        predicate: Callable[[Any], bool],
+        *,
+        timeout: Optional[float] = None,
+        **kwargs: Any,
+    ) -> Any:
+        """
+        Wait for a request event to be emitted.
+        """
+        return await self.wait_for_event(event="request", predicate=predicate, timeout=timeout, **kwargs)
+
+    async def wait_for_response(
+        self,
+        predicate: Callable[[Any], bool],
+        *,
+        timeout: Optional[float] = None,
+        **kwargs: Any,
+    ) -> Any:
+        """
+        Wait for a response event to be emitted.
+        """
+        return await self.wait_for_event(event="response", predicate=predicate, timeout=timeout, **kwargs)
 
     @property
     def origin(self) -> str:
@@ -132,9 +288,81 @@ class HumanPage(Page):
         """
         return await self.context.cookies([self.url])
 
-    async def local_storage(self, **kwargs) -> dict[str, str]:
-        ls = await self.context.local_storage(**kwargs)
-        return ls.get(self.origin, {})
+    async def _collect_web_storage(
+        self,
+        store: Literal["localStorage", "sessionStorage"],
+    ) -> dict[str, dict[str, str]]:
+        """
+        Сбор содержимого выбранного Web Storage по всем фреймам страницы.
+        Возвращает: { origin: { key: value, ... }, ... }
+        """
+        # Собираем список фреймов один раз
+        frames = list(getattr(self, "frames", []))
+
+        async def _from_frame(frame) -> Optional[tuple[str, dict[str, str]]]:
+            url: str = getattr(frame, "url", "") or ""
+            if not (url.startswith("http://") or url.startswith("https://")):
+                return None  # about:blank/data:/chrome-*, и т.п. — пропускаем
+            u = urlsplit(url)
+            origin = f"{u.scheme}://{u.netloc}"
+
+            try:
+                data = await frame.evaluate(
+                    """
+                    (which) => {
+                    try {
+                        const s = (which in window) ? window[which] : null;
+                        if (!s) return null;
+                        const out = {};
+                        for (let i = 0; i < s.length; i++) {
+                        const k = s.key(i);
+                        out[k] = s.getItem(k);
+                        }
+                        return out;
+                    } catch (_) {
+                        return null;
+                    }
+                    }
+                    """,
+                    store,
+                )
+            except Exception:
+                data = None
+
+            if not data:
+                return None
+            return (origin, data)
+
+        # Параллельно обходим все фреймы
+        results = await asyncio.gather(*[_from_frame(f) for f in frames], return_exceptions=True)
+
+        # Аггрегируем по origin
+        aggregated: dict[str, dict[str, str]] = {}
+        for res in results:
+            if isinstance(res, tuple):
+                origin, data = res
+                if origin in aggregated:
+                    aggregated[origin].update(data)   # несколько фреймов одного origin
+                else:
+                    aggregated[origin] = dict(data)
+        return aggregated
+
+
+    async def local_storage(self) -> dict[str, dict[str, str]]:
+        """
+        Прочитать localStorage во всех видимых фреймах (<iframe></<iframe> элементы, в т.ч. main).
+        Возвращает: { origin: { key: value, ... }, ... }
+        """
+        return await self._collect_web_storage("localStorage")
+
+
+    async def session_storage(self) -> dict[str, dict[str, str]]:
+        """
+        Прочитать sessionStorage во всех видимых фреймах (<iframe></iframe> элементы, в т.ч. main).
+        Возвращает: { origin: { key: value, ... }, ... }
+        """
+        return await self._collect_web_storage("sessionStorage")
+
 
     def __repr__(self) -> str:
         return f"<HumanPage wrapping {super().__repr__()!r}>"

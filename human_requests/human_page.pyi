@@ -1,12 +1,22 @@
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional, cast, List, Literal
+from urllib.parse import urlsplit
 
-from playwright.async_api import Page as _PWPage
+from playwright.async_api import Page, Cookie
 from playwright.async_api import Response as PWResponse
-from typing_extensions import Literal, override
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+from typing_extensions import overload, override
 
-class HumanPage(_PWPage):
+from .human_context import HumanContext
+from .abstraction import HttpMethod, FetchResponse
+
+class HumanPage(Page):
+    @property
+    def context(self) -> "HumanContext": ...
+    @staticmethod
+    def replace(playwright_page: Page) -> "HumanPage": ...
+
     @override
     async def goto(
         self,
@@ -19,3 +29,28 @@ class HumanPage(_PWPage):
         referer: Optional[str] = ...,
         **kwargs: Any,
     ) -> PWResponse | None: ...
+
+
+    async def fetch(
+        self,
+        url: str,
+        *,
+        method: HttpMethod = HttpMethod.GET,
+        headers: Optional[dict[str, str]] = None,
+        body: Optional[str | list | dict] = None,
+        credentials: Literal["omit", "same-origin", "include"] = "include",
+        mode: Literal["cors", "no-cors", "same-origin"] = "cors",
+        redirect: Literal["follow", "error", "manual"] = "follow",
+        referrer: Optional[str] = None,
+        timeout_ms: int = 30000,
+    ) -> FetchResponse:
+        ...
+
+    @property
+    def origin(self) -> str: ...
+
+    async def cookies(self) -> List[Cookie]: ...
+
+    async def local_storage(self, **kwargs: Any) -> Dict[str, str]: ...
+
+    def __repr__(self) -> str: ...

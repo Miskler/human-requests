@@ -6,7 +6,7 @@ from .http import URL, HttpMethod
 
 
 @dataclass(frozen=True)
-class Request:
+class FetchRequest:
     """Represents all the data passed in the request."""
 
     method: HttpMethod
@@ -20,6 +20,3 @@ class Request:
 
     body: Optional[str | list | dict]
     """The body of the request."""
-
-    cookies: list[Cookie]
-    """The cookies passed in the request."""

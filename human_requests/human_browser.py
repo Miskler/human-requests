@@ -8,7 +8,6 @@ from playwright.async_api import Browser
 from playwright.async_api import Request as PWRequest
 from playwright.async_api import Route
 
-from .abstraction.response import Response
 from .fingerprint import Fingerprint
 from .human_context import HumanContext
 from .human_page import HumanPage

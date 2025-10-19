@@ -4,7 +4,7 @@ from time import time
 from typing import TYPE_CHECKING, AsyncContextManager, Callable, Literal, Optional
 
 from .http import URL
-from .request import Request
+from .request import FetchRequest
 
 if TYPE_CHECKING:
     from ..human_context import HumanContext
@@ -12,10 +12,10 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class Response:
+class FetchResponse:
     """Represents the response of a request."""
 
-    request: Request
+    request: FetchRequest
     """The request that was made."""
 
     url: URL
@@ -23,9 +23,6 @@ class Response:
 
     headers: dict
     """The headers of the response."""
-
-    cookies: list[str]
-    """The cookies of the response."""
 
     raw: bytes
     """The raw body of the response."""
@@ -42,16 +39,16 @@ class Response:
     _render_callable: Optional[Callable[..., AsyncContextManager["HumanPage"]]] = None
 
     @property
-    def body(self) -> str:
+    def text(self) -> str:
         """The body of the response."""
         charset = self.headers.get("content-type", "utf-8").split("charset=")[-1]
         return self.raw.decode(charset, errors="replace")
 
     def json(self) -> dict | list:
-        to_return = json.loads(self.body)
+        to_return = json.loads(self.text)
         assert isinstance(to_return, list) or isinstance(
             to_return, dict
-        ), f"Response body is not JSON: {type(self.body).__name__}"
+        ), f"Response body is not JSON: {type(self.text).__name__}"
         return to_return
 
     def seconds_ago(self) -> float:
