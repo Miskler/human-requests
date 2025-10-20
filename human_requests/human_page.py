@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, cast, List
 from urllib.parse import urlsplit
 import json
 import time
+from pathlib import Path
 
 import base64
 
@@ -101,7 +102,6 @@ class HumanPage(Page):
         inside `on_retry` if the navigation logic depends on them.
         """
         # Build the kwargs for the underlying goto/reload calls:
-
         try:
             return await super().goto(url, **kwargs)
         except PlaywrightTimeoutError as last_err:
@@ -154,51 +154,11 @@ class HumanPage(Page):
 
         start_t = time.perf_counter()
 
+        _JS_PATH = Path(__file__).parent / "fetch.js"
+        JS_FETCH = _JS_PATH.read_text(encoding="utf-8")
+
         result = await self.evaluate(
-            """
-            async ({ url, method, headers, body, credentials, mode, redirect, ref, timeoutMs }) => {
-            const ctrl = new AbortController();
-            const id = setTimeout(() => ctrl.abort("timeout"), timeoutMs);
-            try {
-                const init = { method, headers, credentials, mode, redirect, signal: ctrl.signal };
-                if (ref) init.referrer = ref;
-                if (body !== undefined && body !== null) init.body = body;
-
-                const r = await fetch(url, init);
-
-                // Заголовки (если CORS позволит)
-                const headersObj = {};
-                try { r.headers.forEach((v, k) => headersObj[k.toLowerCase()] = v); } catch {}
-
-                // Тело читаем как ArrayBuffer (это уже РАСПАКОВАННЫЕ байты), кодируем в base64
-                let bodyB64 = null;
-                try {
-                const ab = await r.arrayBuffer();
-                const u8 = new Uint8Array(ab);
-                const chunk = 0x8000;
-                let binary = "";
-                for (let i = 0; i < u8.length; i += chunk) {
-                    binary += String.fromCharCode.apply(null, u8.subarray(i, i + chunk));
-                }
-                bodyB64 = btoa(binary);
-                } catch { bodyB64 = null; }
-
-                return {
-                ok: true,
-                finalUrl: r.url,
-                status: r.status,
-                type: r.type,        // basic | cors | opaque | opaque-redirect
-                redirected: r.redirected,
-                headers: headersObj, // может быть пустым при CORS
-                bodyB64,             // base64 распакованных байтов или null
-                };
-            } catch (e) {
-                return { ok: false, error: String(e) };
-            } finally {
-                clearTimeout(id);
-            }
-            }
-            """,
+            JS_FETCH,
             dict(
                 url=url,
                 method=method.value,
@@ -211,6 +171,7 @@ class HumanPage(Page):
                 timeoutMs=timeout_ms,
             ),
         )
+        print(f"FETCH RESULT: {result}", flush=True)
 
         duration = time.perf_counter() - start_t
         end_epoch = time.time()

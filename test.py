@@ -21,17 +21,15 @@ async def main():
 
         result = await page.fetch(
             url=f"https://5d.5ka.ru/api/catalog/v2/stores/{default_store_location['selectedAddress']['sapCode']}/categories?mode=delivery",
-            method=HttpMethod.GET,  # Equivalent of "GET"
-            # Fetch the default store from local storage
-            headers={  # Static headers, without them you’ll get a 400
+            method=HttpMethod.GET,
+            headers={
                 "X-PLATFORM": "webapp",
-                # Device ID saved by site JS during warm-up
                 "X-DEVICE-ID": ls["deviceId"],
                 "X-APP-VERSION": "0.1.1.dev"
             }
         )
 
-        pprint(result.text)
+        pprint(result.json())
 
         await browser.close()
 

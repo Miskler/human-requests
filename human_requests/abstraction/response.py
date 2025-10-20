@@ -41,7 +41,9 @@ class FetchResponse:
     @property
     def text(self) -> str:
         """The body of the response."""
-        charset = self.headers.get("content-type", "utf-8").split("charset=")[-1]
+        defchar = "utf-8"
+        ct = self.headers.get("content-type", "")
+        charset = ct.split("charset=")[-1] if "charset=" in ct else defchar
         return self.raw.decode(charset, errors="replace")
 
     def json(self) -> dict | list:
