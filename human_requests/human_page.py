@@ -183,14 +183,14 @@ class HumanPage(Page):
             handled = True
             await route.fulfill(status=status_code, headers=headers, body=raw)
             # Снимем маршрут сразу; если упадёт — не скрываем: пусть всплывёт позже.
-            await page.unroute("**/*", handler)
+            await page.unroute(target_url, handler)
             installed = False
 
         async def _install():
             nonlocal installed
             if installed:
-                await page.unroute("**/*", handler)
-            await page.route("**/*", handler)
+                await page.unroute(target_url, handler)
+            await page.route(target_url, handler)
             installed = True
 
         await _install()
@@ -211,7 +211,7 @@ class HumanPage(Page):
             unroute_exc: Exception | None = None
             if installed:
                 try:
-                    await page.unroute("**/*", handler)
+                    await page.unroute(target_url, handler)
                 except Exception as e:
                     unroute_exc = e
             if nav_exc and unroute_exc:
@@ -330,6 +330,7 @@ class HumanPage(Page):
         if evt_failed in done:
             failure = cur.failure  # dict | None
             msg = (failure or {}).get("errorText") if isinstance(failure, dict) else None
+            raise RuntimeError(str(msg))
             raise RuntimeError(f"network error: {msg or 'unknown'} | {method.value} {url}")
 
         # Успех сети: читаем ответ целиком
