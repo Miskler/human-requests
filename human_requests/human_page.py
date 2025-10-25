@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import base64
+import asyncio
 
 from playwright.async_api import Page, Cookie
 from playwright.async_api import Response as PWResponse
@@ -251,40 +252,93 @@ class HumanPage(Page):
 
         start_t = time.perf_counter()
 
+        # Подготовка тела для JS (JSON -> строка при нужном content-type)
+        js_body: Any = body
+        if isinstance(body, (dict, list)) and declared_headers.get("content-type", "").lower().startswith("application/json"):
+            js_body = json.dumps(body, ensure_ascii=False)
+
+        # --- одноразовый наблюдатель (ничего не меняет, сразу continue_()) ---
+        captured_first_req = None  # type: ignore[assignment]
+
+        async def _route_handler(route, request):
+            nonlocal captured_first_req
+            if (
+                captured_first_req is None
+                and request.frame is self.main_frame
+                and request.method.lower() == method.value.lower()
+                and urlsplit(request.url)._replace(fragment="").geturl()
+                   == urlsplit(url)._replace(fragment="").geturl()
+            ):
+                captured_first_req = request
+            await route.continue_()
+
+        await self.route("**/*", _route_handler)
+
+        # Запускаем JS fetch как триггер сети (тело/заголовки возьмём из протокола)
         _JS_PATH = Path(__file__).parent / "fetch.js"
         JS_FETCH = _JS_PATH.read_text(encoding="utf-8")
-
-        result = await self.evaluate(
-            JS_FETCH,
-            dict(
-                url=url,
-                method=method.value,
-                headers=js_headers or {},
-                body=js_body,
-                credentials=credentials,
-                mode=mode,
-                redirect=redirect,
-                ref=js_ref,
-                timeoutMs=timeout_ms,
-            ),
+        eval_task = asyncio.create_task(
+            self.evaluate(
+                JS_FETCH,
+                dict(
+                    url=url,
+                    method=method.value,
+                    headers={k: v for k, v in declared_headers.items() if k != "referer"} or {},
+                    body=js_body,
+                    credentials=credentials,
+                    mode=mode,
+                    redirect=redirect,
+                    ref=referrer or declared_headers.get("referer"),
+                    timeoutMs=timeout_ms,
+                ),
+            )
         )
-        print(f"FETCH RESULT: {result}", flush=True)
+
+        # Ждём наш первый Request
+        first_req = await self.wait_for_event(
+            "request",
+            predicate=lambda r: (r.frame is self.main_frame)
+                                and (r.method.lower() == method.value.lower())
+                                and urlsplit(r.url)._replace(fragment="").geturl()
+                                    == urlsplit(url)._replace(fragment="").geturl(),
+            timeout=timeout_ms,
+        )
+
+        # Финальный запрос: по цепочке redirected_to
+        cur = first_req
+        while getattr(cur, "redirected_to", None) is not None:
+            cur = cur.redirected_to  # type: ignore[assignment]
+
+        # Ждём завершения финального запроса
+        evt_finished = asyncio.create_task(
+            self.wait_for_event("requestfinished", predicate=lambda r: r is cur, timeout=timeout_ms)
+        )
+        evt_failed = asyncio.create_task(
+            self.wait_for_event("requestfailed", predicate=lambda r: r is cur, timeout=timeout_ms)
+        )
+        done, pending = await asyncio.wait({evt_finished, evt_failed}, return_when=asyncio.FIRST_COMPLETED)
+        for p in pending:
+            p.cancel()
 
         duration = time.perf_counter() - start_t
         end_epoch = time.time()
 
-        if not result.get("ok"):
-            raise RuntimeError(f"fetch failed: {result.get('error')}")
+        # Снимаем наблюдатель (если тут бросит — ты увидишь ошибку сразу)
+        await self.unroute("**/*", _route_handler)
 
-        # bytes в raw: распакованные (если body доступен)
-        b64 = result.get("bodyB64")
-        raw = base64.b64decode(b64) if isinstance(b64, str) else b""
+        # Если сеть упала — поднимем понятную ошибку
+        if evt_failed in done:
+            failure = cur.failure  # dict | None
+            msg = (failure or {}).get("errorText") if isinstance(failure, dict) else None
+            raise RuntimeError(f"network error: {msg or 'unknown'} | {method.value} {url}")
 
-        # Нормализуем заголовки: если raw есть, уберём transport-атрибуты, чтобы не путать потребителя
-        resp_headers = {k.lower(): v for k, v in (result.get("headers") or {}).items()}
-        if raw:
-            resp_headers.pop("content-encoding", None)
-            resp_headers.pop("content-length", None)
+        # Успех сети: читаем ответ целиком
+        resp = await cur.response()
+        if resp is None:
+            raise RuntimeError("no response object")
+
+        raw = await resp.body()
+        resp_headers = {k.lower(): v for k, v in (await resp.all_headers()).items()}
 
         req_model = FetchRequest(
             method=method,
@@ -292,17 +346,21 @@ class HumanPage(Page):
             headers=declared_headers,
             body=body,
         )
-
         resp_model = FetchResponse(
             request=req_model,
-            url=URL(full_url=result.get("finalUrl") or url),
+            url=URL(full_url=resp.url),
             headers=resp_headers,
-            raw=raw,     # всегда bytes; пусто если CORS не дал читать тело
-            status_code=int(result.get("status", 0)),
+            raw=raw,
+            status_code=int(resp.status),
             duration=duration,
             end_time=end_epoch,
         )
+
+        # Дожимаем JS-фетч (если он упадёт — упадёт явно, без подавления)
+        await eval_task
+
         return resp_model
+
 
 
     async def wait_for_request(
