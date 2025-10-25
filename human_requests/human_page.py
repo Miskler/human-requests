@@ -124,6 +124,142 @@ class HumanPage(Page):
             if last_err is not None:
                 raise last_err
     
+    async def goto_render(self, first, /, **goto_kwargs: Any) -> Optional[PWResponse]:
+        """
+        Одноразово перехватывает *первый* навигационный запрос main-frame к `target_url`
+        и отдает синтетический ответ (status/headers/body). Затем выполняет обычный
+        `page.goto(target_url, **kwargs)` и возвращает его результат (PWResponse | None).
+
+        Формы вызова:
+          • page.goto_render(FetchResponse, **goto_kwargs)
+          • page.goto_render(url, body=..., status_code=..., headers=..., **goto_kwargs)
+        """
+        # ---- нормализация входа -------------------------------------------------
+        def _to_bytes(data: bytes | bytearray | memoryview | str) -> bytes:
+            if isinstance(data, (bytes, bytearray, memoryview)):
+                return bytes(data)
+            # str -> bytes
+            return data.encode("utf-8", "replace")
+
+        def _looks_like_html(b: bytes) -> bool:
+            sample = b[:512].lstrip().lower()
+            return sample.startswith(b"<!doctype html") or sample.startswith(b"<html") or b"<body" in sample
+
+        retry = goto_kwargs.pop("retry", None)
+        on_retry = goto_kwargs.pop("on_retry", None)
+
+        if isinstance(first, FetchResponse):
+            target_url = first.url.full_url
+            raw = _to_bytes(first.raw or b"")
+            status_code = int(first.status_code)
+            headers = dict(first.headers or {})
+        else:
+            target_url = str(first)
+            if "body" not in goto_kwargs:
+                raise TypeError("goto_render(url=..., *, body=...) is required")
+            raw = _to_bytes(goto_kwargs.pop("body"))
+            status_code = int(goto_kwargs.pop("status_code", 200))
+            headers = dict(goto_kwargs.pop("headers", {}) or {})
+
+        # Заголовки: убрать транспортные, подставить content-type при необходимости
+        clean_headers: dict[str, str] = {}
+        for k, v in headers.items():
+            kl = str(k).strip()
+            if kl.lower() in {"content-length", "content-encoding", "transfer-encoding", "connection"}:
+                continue
+            clean_headers[kl] = v
+        if not any(k.lower() == "content-type" for k in clean_headers):
+            if raw and _looks_like_html(raw):
+                clean_headers["content-type"] = "text/html; charset=utf-8"
+
+        # ---- безопасный one-shot роутинг на уровне страницы ---------------------
+        page = self
+        main_frame = page.main_frame
+        target_wo_hash = urlsplit(target_url)._replace(fragment="").geturl()
+
+        handled = False
+        installed = False
+        unroute_exc_from_handler: Optional[Exception] = None
+
+        async def handler(route, request):
+            nonlocal handled, installed, unroute_exc_from_handler
+
+            def _is_target_nav(req) -> bool:
+                if req.frame != main_frame or \
+                not req.is_navigation_request() or \
+                req.resource_type != "document":
+                    return False
+                req_wo_hash = urlsplit(req.url)._replace(fragment="").geturl()
+                return req_wo_hash == target_wo_hash
+
+            if handled or not _is_target_nav(request):
+                return await route.continue_()
+            handled = True
+            await route.fulfill(status=status_code, headers=clean_headers, body=raw)
+            # Сразу отвяжемся (не скрываем возможную ошибку — сохраним и поднимем позже)
+            try:
+                await page.unroute("**/*", handler)
+                installed = False
+            except Exception as e:
+                unroute_exc_from_handler = e  # поднимем после навигации
+
+        async def _install():
+            nonlocal installed
+            if installed:
+                # переустановка: сначала снять, потом повесить; ошибки — наружу
+                await page.unroute("**/*", handler)
+                installed = False
+            await page.route("**/*", handler)
+            installed = True
+
+        # Ставим перехват до навигации
+        await _install()
+
+        # Обертка над on_retry: при ретрае надо заново установить маршрут
+        async def _on_retry_wrapper():
+            await _install()
+            if on_retry:
+                await on_retry()
+
+        nav_exc: Optional[Exception] = None
+        result: Optional[PWResponse] = None
+
+        try:
+            result = await page.goto(
+                target_url,
+                retry=retry,
+                on_retry=_on_retry_wrapper,
+                **goto_kwargs,  # пробросить все родные параметры goto
+            )
+        except Exception as e:
+            nav_exc = e
+        finally:
+            # Финальная попытка снять перехват, если он ещё висит
+            final_unroute_exc: Optional[Exception] = None
+            if installed:
+                try:
+                    await page.unroute("**/*", handler)
+                except Exception as e:
+                    final_unroute_exc = e
+                finally:
+                    installed = False
+
+            # Не скрываем ошибки: собираем и поднимаем максимально честно.
+            errors: list[Exception] = []
+            if nav_exc:
+                errors.append(nav_exc)
+            if unroute_exc_from_handler:
+                errors.append(unroute_exc_from_handler)
+            if final_unroute_exc:
+                errors.append(final_unroute_exc)
+
+            if errors:
+                if len(errors) == 1:
+                    raise errors[0]
+                # Python 3.11+: вернём ExceptionGroup, чтобы ничего не потерять.
+                raise ExceptionGroup("goto_render failed with multiple errors", errors)
+
+        return result
     
     async def fetch(
         self,

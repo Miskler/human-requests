@@ -30,6 +30,34 @@ class HumanPage(Page):
         **kwargs: Any,
     ) -> PWResponse | None: ...
 
+    @overload
+    async def goto_render(
+        self,
+        response: "FetchResponse",
+        *,
+        retry: Optional[int] = ...,
+        on_retry: Optional[Callable[[], Awaitable[None]]] = ...,
+        timeout: Optional[float] = ...,
+        wait_until: Optional[Literal["commit", "domcontentloaded", "load", "networkidle"]] = ...,
+        referer: Optional[str] = ...,
+        **kwargs: Any,
+    ) -> Optional[PWResponse]: ...
+
+    @overload
+    async def goto_render(
+        self,
+        url: str,
+        *,
+        body: bytes | str,
+        status_code: int = 200,
+        headers: Optional[dict[str, str]] = None,
+        retry: Optional[int] = ...,
+        on_retry: Optional[Callable[[], Awaitable[None]]] = ...,
+        timeout: Optional[float] = ...,
+        wait_until: Optional[Literal["commit", "domcontentloaded", "load", "networkidle"]] = ...,
+        referer: Optional[str] = ...,
+        **kwargs: Any,
+    ) -> Optional[PWResponse]: ...
 
     async def fetch(
         self,
