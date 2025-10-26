@@ -1,20 +1,19 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, cast, List, Literal
-from urllib.parse import urlsplit
+import asyncio
+import base64
 import json
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Literal, Optional, cast
+from urllib.parse import urlsplit
 
-import base64
-import asyncio
-
-from playwright.async_api import Page, Cookie
+from playwright.async_api import Cookie, Page
 from playwright.async_api import Response as PWResponse
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from typing_extensions import override
 
-from .abstraction.http import HttpMethod, URL
+from .abstraction.http import URL, HttpMethod
 from .abstraction.request import FetchRequest
 from .abstraction.response import FetchResponse
 
@@ -124,16 +123,25 @@ class HumanPage(Page):
                     last_err = e
             if last_err is not None:
                 raise last_err
-    
+
     async def goto_render(self, first, /, **goto_kwargs) -> Optional[PWResponse]:
         """
         Перехватывает первый навигационный запрос main-frame к target_url и
         отдаёт синтетический ответ, затем делает обычный page.goto(...).
         Возвращает Optional[PWResponse] как и goto.
         """
+
         # -------- helpers (локально и коротко) ---------------------------------
         def _to_bytes(data: bytes | bytearray | memoryview | str) -> bytes:
-            return data if isinstance(data, bytes) else bytes(data) if isinstance(data, (bytearray, memoryview)) else data.encode("utf-8", "replace")
+            return (
+                data
+                if isinstance(data, bytes)
+                else (
+                    bytes(data)
+                    if isinstance(data, (bytearray, memoryview))
+                    else data.encode("utf-8", "replace")
+                )
+            )
 
         def _is_html(b: bytes) -> bool:
             s = b[:512].lstrip().lower()
@@ -172,7 +180,11 @@ class HumanPage(Page):
         installed = False
 
         def _match(req) -> bool:
-            if req.frame is not main_frame or not req.is_navigation_request() or req.resource_type != "document":
+            if (
+                req.frame is not main_frame
+                or not req.is_navigation_request()
+                or req.resource_type != "document"
+            ):
                 return False
             return urlsplit(req.url)._replace(fragment="").geturl() == target_wo_hash
 
@@ -204,7 +216,9 @@ class HumanPage(Page):
         nav_exc: Exception | None = None
         res: Optional[PWResponse] = None
         try:
-            res = await page.goto(target_url, retry=retry, on_retry=_on_retry_wrapper, **goto_kwargs)
+            res = await page.goto(
+                target_url, retry=retry, on_retry=_on_retry_wrapper, **goto_kwargs
+            )
         except Exception as e:
             nav_exc = e
         finally:
@@ -222,7 +236,7 @@ class HumanPage(Page):
                 raise unroute_exc
 
         return res
-    
+
     async def fetch(
         self,
         url: str,
@@ -245,14 +259,18 @@ class HumanPage(Page):
         declared_headers = {k.lower(): v for k, v in (headers or {}).items()}
 
         js_body: Any = body
-        if isinstance(body, (dict, list)) and declared_headers.get("content-type", "").lower().startswith("application/json"):
+        if isinstance(body, (dict, list)) and declared_headers.get(
+            "content-type", ""
+        ).lower().startswith("application/json"):
             js_body = json.dumps(body, ensure_ascii=False)
 
         start_t = time.perf_counter()
 
         # Подготовка тела для JS (JSON -> строка при нужном content-type)
         js_body: Any = body
-        if isinstance(body, (dict, list)) and declared_headers.get("content-type", "").lower().startswith("application/json"):
+        if isinstance(body, (dict, list)) and declared_headers.get(
+            "content-type", ""
+        ).lower().startswith("application/json"):
             js_body = json.dumps(body, ensure_ascii=False)
 
         # 1) Запускаем JS fetch (только триггер сети; тело/хедеры читаем с протокола)
@@ -285,7 +303,8 @@ class HumanPage(Page):
         # 2) Ждём первый request к нужному URL/методу
         first_req = await self.wait_for_event(
             "request",
-            predicate=lambda r: r.method.lower() == target_method and _norm(r.url) == target_url_norm,
+            predicate=lambda r: r.method.lower() == target_method
+            and _norm(r.url) == target_url_norm,
             timeout=timeout_ms,
         )
 
@@ -295,15 +314,25 @@ class HumanPage(Page):
 
         while True:
             t_next = asyncio.create_task(
-                self.wait_for_event("request", predicate=lambda r, _cur=cur: getattr(r, "redirected_from", None) is _cur, timeout=timeout_ms)
+                self.wait_for_event(
+                    "request",
+                    predicate=lambda r, _cur=cur: getattr(r, "redirected_from", None) is _cur,
+                    timeout=timeout_ms,
+                )
             )
             t_fin = asyncio.create_task(
-                self.wait_for_event("requestfinished", predicate=lambda r, _cur=cur: r is _cur, timeout=timeout_ms)
+                self.wait_for_event(
+                    "requestfinished", predicate=lambda r, _cur=cur: r is _cur, timeout=timeout_ms
+                )
             )
             t_fail = asyncio.create_task(
-                self.wait_for_event("requestfailed", predicate=lambda r, _cur=cur: r is _cur, timeout=timeout_ms)
+                self.wait_for_event(
+                    "requestfailed", predicate=lambda r, _cur=cur: r is _cur, timeout=timeout_ms
+                )
             )
-            done, pending = await asyncio.wait({t_next, t_fin, t_fail}, return_when=asyncio.FIRST_COMPLETED)
+            done, pending = await asyncio.wait(
+                {t_next, t_fin, t_fail}, return_when=asyncio.FIRST_COMPLETED
+            )
             for p in pending:
                 p.cancel()
 
@@ -320,7 +349,11 @@ class HumanPage(Page):
 
                 # даём короткую фразу на появление next hop после abort
                 t_quick = asyncio.create_task(
-                    self.wait_for_event("request", predicate=lambda r, _cur=cur: getattr(r, "redirected_from", None) is _cur, timeout=int(redirect_grace * 1000))
+                    self.wait_for_event(
+                        "request",
+                        predicate=lambda r, _cur=cur: getattr(r, "redirected_from", None) is _cur,
+                        timeout=int(redirect_grace * 1000),
+                    )
                 )
                 await asyncio.wait({t_quick}, timeout=redirect_grace)
                 if t_quick.done() and t_quick.exception() is None:
@@ -337,7 +370,12 @@ class HumanPage(Page):
                 status = int(getattr(resp_try, "status", 0)) if resp_try is not None else 0
                 if 300 <= status < 400:
                     t_quick = asyncio.create_task(
-                        self.wait_for_event("request", predicate=lambda r, _cur=cur: getattr(r, "redirected_from", None) is _cur, timeout=int(redirect_grace * 1000))
+                        self.wait_for_event(
+                            "request",
+                            predicate=lambda r, _cur=cur: getattr(r, "redirected_from", None)
+                            is _cur,
+                            timeout=int(redirect_grace * 1000),
+                        )
                     )
                     await asyncio.wait({t_quick}, timeout=redirect_grace)
                     if t_quick.done() and t_quick.exception() is None:
@@ -378,8 +416,6 @@ class HumanPage(Page):
 
         return resp_model
 
-
-
     async def wait_for_request(
         self,
         predicate: Callable[[Any], bool],
@@ -390,7 +426,9 @@ class HumanPage(Page):
         """
         Wait for a request event to be emitted.
         """
-        return await self.wait_for_event(event="request", predicate=predicate, timeout=timeout, **kwargs)
+        return await self.wait_for_event(
+            event="request", predicate=predicate, timeout=timeout, **kwargs
+        )
 
     async def wait_for_response(
         self,
@@ -402,7 +440,9 @@ class HumanPage(Page):
         """
         Wait for a response event to be emitted.
         """
-        return await self.wait_for_event(event="response", predicate=predicate, timeout=timeout, **kwargs)
+        return await self.wait_for_event(
+            event="response", predicate=predicate, timeout=timeout, **kwargs
+        )
 
     @property
     def origin(self) -> str:

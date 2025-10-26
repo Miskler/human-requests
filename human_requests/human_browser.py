@@ -20,7 +20,6 @@ class HumanBrowser(Browser):
         playwright_browser.__class__ = HumanBrowser
         return playwright_browser  # type: ignore[return-value]
 
-
     async def fingerprint(
         self,
         *,
@@ -74,7 +73,7 @@ class HumanBrowser(Browser):
         >>> fp.browser_name, fp.browser_version
         ('Chromium', '140.0.7339.16')
         """
-        
+
         HTML_PATH = Path(__file__).parent / "fingerprint" / "fingerprint_gen.html"
         _HTML_FINGERPRINT = HTML_PATH.read_text(encoding="utf-8")
 

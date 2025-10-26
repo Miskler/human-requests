@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional
+
 from playwright.async_api import Cookie
 
 from .http import URL, HttpMethod

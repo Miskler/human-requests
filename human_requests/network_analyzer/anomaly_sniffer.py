@@ -3,11 +3,10 @@ from __future__ import annotations
 import asyncio
 import re
 from collections import defaultdict
-from typing import Dict, Set, Iterable, Optional, Callable, Pattern, Union
+from typing import Callable, Dict, Iterable, Optional, Pattern, Set, Union
 from urllib.parse import urlsplit, urlunsplit
 
 from playwright.async_api import BrowserContext, Request, Response
-
 
 UrlFilter = Optional[Union[Callable[[str], bool], str, Pattern[str]]]
 
@@ -30,25 +29,72 @@ class HeaderAnomalySniffer:
 
     # базовый вайтлист (нижний регистр)
     _REQ_STD: Set[str] = {
-        "accept", "accept-encoding", "accept-language", "cache-control", "connection",
-        "content-length", "content-type", "cookie", "host", "origin", "pragma",
-        "referer", "upgrade-insecure-requests", "user-agent",
-        "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform",
-        "sec-fetch-dest", "sec-fetch-mode", "sec-fetch-site", "sec-fetch-user",
-        "x-requested-with", "purpose",
+        "accept",
+        "accept-encoding",
+        "accept-language",
+        "cache-control",
+        "connection",
+        "content-length",
+        "content-type",
+        "cookie",
+        "host",
+        "origin",
+        "pragma",
+        "referer",
+        "upgrade-insecure-requests",
+        "user-agent",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "sec-fetch-dest",
+        "sec-fetch-mode",
+        "sec-fetch-site",
+        "sec-fetch-user",
+        "x-requested-with",
+        "purpose",
     }
     _RESP_STD: Set[str] = {
-        "accept-ch", "accept-ranges", "age", "alt-svc", "cache-control",
-        "content-disposition", "content-encoding", "content-language", "content-length",
-        "content-security-policy", "content-type", "date", "etag", "expect-ct",
-        "expires", "last-modified", "link", "pragma", "server", "set-cookie",
-        "strict-transport-security", "transfer-encoding", "vary", "via",
-        "x-content-type-options", "x-frame-options", "x-xss-protection",
-        "report-to", "nel", "permissions-policy",
-        "cross-origin-opener-policy", "cross-origin-embedder-policy", "cross-origin-resource-policy",
-        "referrer-policy", "location", "connection",
+        "accept-ch",
+        "accept-ranges",
+        "age",
+        "alt-svc",
+        "cache-control",
+        "content-disposition",
+        "content-encoding",
+        "content-language",
+        "content-length",
+        "content-security-policy",
+        "content-type",
+        "date",
+        "etag",
+        "expect-ct",
+        "expires",
+        "last-modified",
+        "link",
+        "pragma",
+        "server",
+        "set-cookie",
+        "strict-transport-security",
+        "transfer-encoding",
+        "vary",
+        "via",
+        "x-content-type-options",
+        "x-frame-options",
+        "x-xss-protection",
+        "report-to",
+        "nel",
+        "permissions-policy",
+        "cross-origin-opener-policy",
+        "cross-origin-embedder-policy",
+        "cross-origin-resource-policy",
+        "referrer-policy",
+        "location",
+        "connection",
     }
-    _STD_PREFIXES = ("sec-", "access-control-",)  # префиксы, которые считаем «нормальными»
+    _STD_PREFIXES = (
+        "sec-",
+        "access-control-",
+    )  # префиксы, которые считаем «нормальными»
 
     def __init__(
         self,
@@ -69,10 +115,12 @@ class HeaderAnomalySniffer:
         if url_key:
             self._url_key = url_key
         else:
+
             def _default_url_key(u: str) -> str:
                 us = urlsplit(u)
                 path = us.path.rstrip("/") or "/"
                 return urlunsplit(us._replace(path=path, fragment=""))
+
             self._url_key = _default_url_key
 
         # фильтр URL: callable/regex/None
@@ -83,7 +131,9 @@ class HeaderAnomalySniffer:
             self._url_filter_fn = url_filter  # type: ignore[assignment]
         else:
             # строка с регекспом или скомпилированный pattern
-            pat: Pattern[str] = re.compile(url_filter) if isinstance(url_filter, str) else url_filter
+            pat: Pattern[str] = (
+                re.compile(url_filter) if isinstance(url_filter, str) else url_filter
+            )
             self._url_filter_fn = lambda s, _p=pat: bool(_p.search(s))
 
         self._ctx: Optional[BrowserContext] = None
@@ -113,7 +163,11 @@ class HeaderAnomalySniffer:
                 return
             if not self._include_sub:
                 try:
-                    if not req.is_navigation_request() or req.resource_type != "document" or req.frame.parent is not None:
+                    if (
+                        not req.is_navigation_request()
+                        or req.resource_type != "document"
+                        or req.frame.parent is not None
+                    ):
                         return
                 except Exception:
                     return
@@ -127,7 +181,11 @@ class HeaderAnomalySniffer:
             if not self._include_sub:
                 rq = resp.request
                 try:
-                    if not rq.is_navigation_request() or rq.resource_type != "document" or rq.frame.parent is not None:
+                    if (
+                        not rq.is_navigation_request()
+                        or rq.resource_type != "document"
+                        or rq.frame.parent is not None
+                    ):
                         return
                 except Exception:
                     return

@@ -1,4 +1,4 @@
-from .http import HttpMethod, URL
+from .http import URL, HttpMethod
 from .request import FetchRequest
 from .response import FetchResponse
 
