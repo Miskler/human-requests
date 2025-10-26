@@ -55,7 +55,7 @@ version = {attr = "human_requests.__version__"}
 include = ["human_requests*"]
 
 [tool.setuptools.package-data]
-"human_requests" = ["py.typed", "fingerprint/*.html"]
+"human_requests" = ["py.typed", "fingerprint/*.html", "fetch.js"]
 
 
 
