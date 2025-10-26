@@ -243,8 +243,6 @@ class HumanPage(Page):
         • При opaque-ответе тело/заголовки могут быть недоступны — это ограничение CORS.
         """
         declared_headers = {k.lower(): v for k, v in (headers or {}).items()}
-        js_headers = {k: v for k, v in declared_headers.items() if k != "referer"}
-        js_ref = referrer or declared_headers.get("referer")
 
         js_body: Any = body
         if isinstance(body, (dict, list)) and declared_headers.get("content-type", "").lower().startswith("application/json"):
@@ -257,24 +255,7 @@ class HumanPage(Page):
         if isinstance(body, (dict, list)) and declared_headers.get("content-type", "").lower().startswith("application/json"):
             js_body = json.dumps(body, ensure_ascii=False)
 
-        # --- одноразовый наблюдатель (ничего не меняет, сразу continue_()) ---
-        captured_first_req = None  # type: ignore[assignment]
-
-        async def _route_handler(route, request):
-            nonlocal captured_first_req
-            if (
-                captured_first_req is None
-                and request.frame is self.main_frame
-                and request.method.lower() == method.value.lower()
-                and urlsplit(request.url)._replace(fragment="").geturl()
-                   == urlsplit(url)._replace(fragment="").geturl()
-            ):
-                captured_first_req = request
-            await route.continue_()
-
-        await self.route("**/*", _route_handler)
-
-        # Запускаем JS fetch как триггер сети (тело/заголовки возьмём из протокола)
+        # 1) Запускаем JS fetch (только триггер сети; тело/хедеры читаем с протокола)
         _JS_PATH = Path(__file__).parent / "fetch.js"
         JS_FETCH = _JS_PATH.read_text(encoding="utf-8")
         eval_task = asyncio.create_task(
@@ -294,48 +275,83 @@ class HumanPage(Page):
             )
         )
 
-        # Ждём наш первый Request
+        # Нормализуем URL без фрагмента
+        def _norm(u: str) -> str:
+            return urlsplit(u)._replace(fragment="").geturl()
+
+        target_url_norm = _norm(url)
+        target_method = method.value.lower()
+
+        # 2) Ждём первый request к нужному URL/методу
         first_req = await self.wait_for_event(
             "request",
-            predicate=lambda r: (r.frame is self.main_frame)
-                                and (r.method.lower() == method.value.lower())
-                                and urlsplit(r.url)._replace(fragment="").geturl()
-                                    == urlsplit(url)._replace(fragment="").geturl(),
+            predicate=lambda r: r.method.lower() == target_method and _norm(r.url) == target_url_norm,
             timeout=timeout_ms,
         )
 
-        # Финальный запрос: по цепочке redirected_to
         cur = first_req
-        while getattr(cur, "redirected_to", None) is not None:
-            cur = cur.redirected_to  # type: ignore[assignment]
+        timeout_s = timeout_ms / 1000.0
+        redirect_grace = 0.2  # 200ms на появление следующего hop при abort/3xx
 
-        # Ждём завершения финального запроса
-        evt_finished = asyncio.create_task(
-            self.wait_for_event("requestfinished", predicate=lambda r: r is cur, timeout=timeout_ms)
-        )
-        evt_failed = asyncio.create_task(
-            self.wait_for_event("requestfailed", predicate=lambda r: r is cur, timeout=timeout_ms)
-        )
-        done, pending = await asyncio.wait({evt_finished, evt_failed}, return_when=asyncio.FIRST_COMPLETED)
-        for p in pending:
-            p.cancel()
+        while True:
+            t_next = asyncio.create_task(
+                self.wait_for_event("request", predicate=lambda r, _cur=cur: getattr(r, "redirected_from", None) is _cur, timeout=timeout_ms)
+            )
+            t_fin = asyncio.create_task(
+                self.wait_for_event("requestfinished", predicate=lambda r, _cur=cur: r is _cur, timeout=timeout_ms)
+            )
+            t_fail = asyncio.create_task(
+                self.wait_for_event("requestfailed", predicate=lambda r, _cur=cur: r is _cur, timeout=timeout_ms)
+            )
+            done, pending = await asyncio.wait({t_next, t_fin, t_fail}, return_when=asyncio.FIRST_COMPLETED)
+            for p in pending:
+                p.cancel()
+
+            # 2.1 redirect: есть следующий hop
+            if t_next in done and t_next.exception() is None:
+                cur = t_next.result()
+                continue
+
+            # 2.2 fail: возможно abort из-за редиректа
+            if t_fail in done and t_fail.exception() is None:
+                failure_req = t_fail.result()
+                failure = getattr(failure_req, "failure", None) or {}
+                err_text = failure.get("errorText") if isinstance(failure, dict) else None
+
+                # даём короткую фразу на появление next hop после abort
+                t_quick = asyncio.create_task(
+                    self.wait_for_event("request", predicate=lambda r, _cur=cur: getattr(r, "redirected_from", None) is _cur, timeout=int(redirect_grace * 1000))
+                )
+                await asyncio.wait({t_quick}, timeout=redirect_grace)
+                if t_quick.done() and t_quick.exception() is None:
+                    cur = t_quick.result()
+                    continue
+
+                # реальный провал сети
+                await eval_task
+                raise RuntimeError(f"network error: {err_text or 'unknown'} | {method.value} {url}")
+
+            # 2.3 finished: возможно 3xx -> ждём hop
+            if t_fin in done and t_fin.exception() is None:
+                resp_try = await cur.response()
+                status = int(getattr(resp_try, "status", 0)) if resp_try is not None else 0
+                if 300 <= status < 400:
+                    t_quick = asyncio.create_task(
+                        self.wait_for_event("request", predicate=lambda r, _cur=cur: getattr(r, "redirected_from", None) is _cur, timeout=int(redirect_grace * 1000))
+                    )
+                    await asyncio.wait({t_quick}, timeout=redirect_grace)
+                    if t_quick.done() and t_quick.exception() is None:
+                        cur = t_quick.result()
+                        continue
+                # финал
+                resp = resp_try
+                break
 
         duration = time.perf_counter() - start_t
         end_epoch = time.time()
 
-        # Снимаем наблюдатель (если тут бросит — ты увидишь ошибку сразу)
-        await self.unroute("**/*", _route_handler)
-
-        # Если сеть упала — поднимем понятную ошибку
-        if evt_failed in done:
-            failure = cur.failure  # dict | None
-            msg = (failure or {}).get("errorText") if isinstance(failure, dict) else None
-            raise RuntimeError(str(failure))
-            raise RuntimeError(f"network error: {msg or 'unknown'} | {method.value} {url}")
-
-        # Успех сети: читаем ответ целиком
-        resp = await cur.response()
         if resp is None:
+            await eval_task
             raise RuntimeError("no response object")
 
         raw = await resp.body()
@@ -357,7 +373,7 @@ class HumanPage(Page):
             end_time=end_epoch,
         )
 
-        # Дожимаем JS-фетч (если он упадёт — упадёт явно, без подавления)
+        # 4) Дожимаем JS-fetch (если он упал из-за CORS — это уже не критично)
         await eval_task
 
         return resp_model
