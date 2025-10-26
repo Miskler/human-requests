@@ -18,6 +18,9 @@ class FetchResponse:
     request: FetchRequest
     """The request that was made."""
 
+    page: HumanPage
+    """The page that made the request."""
+
     url: URL
     """The URL of the response. Due to redirects, it can differ from `request.url`."""
 
@@ -57,16 +60,17 @@ class FetchResponse:
         """How long ago was the request?"""
         return time() - self.end_time
 
-    def render(
+    async def render(
         self,
-        wait_until: Literal["commit", "load", "domcontentloaded", "networkidle"] = "commit",
         retry: int = 2,
-        context: Optional["HumanContext"] = None,
-    ) -> AsyncContextManager["HumanPage"]:
+        timeout: Optional[float] = None,
+        wait_until: Literal["commit", "load", "domcontentloaded", "networkidle"] = "commit",
+        referer: Optional[str] = None,
+    ) -> "HumanPage":
         """Renders the response content in the current browser.
         It will look like we requested it through the browser from the beginning.
 
         Recommended to use in cases when the server returns a JS challenge instead of a response."""
-        if self._render_callable:
-            return self._render_callable(self, wait_until=wait_until, retry=retry, context=context)
-        raise ValueError("Not set render callable for Response")
+        page = await self.page.context.new_page()
+        await page.goto_render(self, wait_until=wait_until, referer=referer, timeout=timeout, retry=retry)
+        return page

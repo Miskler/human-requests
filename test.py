@@ -28,7 +28,7 @@ async def main():
 
         await page.goto("https://5ka.ru", wait_until="load")
         await page.wait_for_selector(selector="next-route-announcer", state="attached")
-        #await asyncio.sleep(5)  # ждем, чтобы все запросы ушли
+        await asyncio.sleep(5)  # ждем, чтобы все запросы ушли
 
         pprint(await sniffer.complete())
 

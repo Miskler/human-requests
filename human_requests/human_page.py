@@ -404,7 +404,7 @@ class HumanPage(Page):
 
         cur = first_req
         timeout_s = timeout_ms / 1000.0
-        redirect_grace = 0.2  # 200ms на появление следующего hop при abort/3xx
+        redirect_grace = 0.4  # 400ms на появление следующего hop при abort/3xx
 
         while True:
             t_next = asyncio.create_task(

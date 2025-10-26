@@ -8,6 +8,8 @@ async ({ url, method, headers, body, credentials, mode, redirect, ref, timeoutMs
 
         const r = await fetch(url, init);
 
+        return null;  // заглушка т.к. питон сам перехватывает ответ и запрос
+
         // заголовки (если CORS позволит)
         const headersObj = {};
         try { r.headers.forEach((v, k) => headersObj[k.toLowerCase()] = v); } catch {}
