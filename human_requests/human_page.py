@@ -251,11 +251,107 @@ class HumanPage(Page):
         timeout_ms: int = 30000,
     ) -> FetchResponse:
         """
-        Тонкая прослойка над JS fetch: выполняет запрос внутри страницы и возвращает ResponseModel.
-        • Без route / wait_for_event.
-        • raw — ВСЕГДА распакованные байты (если тело доступно JS).
-        • При opaque-ответе тело/заголовки могут быть недоступны — это ограничение CORS.
+        Выполняет HTTP-запрос «изнутри» страницы и возвращает *протокольный* ответ как `FetchResponse`.
+
+        Как это работает
+        ----------------
+        Метод запускает короткий JS-`fetch(...)` лишь как **триггер сети**, а сами данные ответа
+        (статус, заголовки, «сырые» байты) читает через сетевые события браузера (Playwright API).
+        Благодаря этому:
+          • игнорируются CORS-ограничения JS: `resp.raw` — это всегда байты тела (если сервер их прислал);
+          • корректно ведётся цепочка редиректов; возвращается финальный ответ;
+          • не используются `page.route(...)` — отсутствуют конфликты с чужими перехватчиками и накладные расходы.
+
+        Поведение и особенности
+        -----------------------
+        • `headers`: передаются в запрос; заголовок `Referer` брать из аргумента `referrer`
+          (если вы передали `'referer'` в `headers`, он будет автоматически использован как `referrer`).
+        • `body`: если это `dict`/`list` **и** `Content-Type: application/json`,
+          тело будет сериализовано `json.dumps(..., ensure_ascii=False)`. В остальных случаях передайте готовую строку.
+        • `mode="no-cors"`: JS-уровень увидит «opaque», но метод всё равно вернёт тело и заголовки,
+          т.к. они считываются из протокола.
+        • Редиректы: цепочка отслеживается по объектам `Request`. Типичные FF-аборты на редиректе
+          (`NS_BINDING_ABORTED`) не считаются ошибкой, если сразу появляется следующий hop.
+        • Параллельность: корреляция первого запроса идёт по URL+методу в *том же фрейме*, где выполняется `evaluate`.
+          Если на странице в этот же момент стартует другой запрос с **тем же** URL/методом из того же фрейма,
+          возможна коллизия. Избегайте одновременных идентичных запросов или различайте их заголовками/квери.
+
+        Параметры
+        ---------
+        url : str
+            Адрес запроса (фрагмент `#...` игнорируется при сопоставлении).
+        method : HttpMethod, по умолчанию GET
+            HTTP-метод.
+        headers : dict[str, str] | None
+            Заголовки запроса. `Referer` берите из `referrer` (или положите сюда — мы переложим).
+        body : str | list | dict | None
+            Тело запроса. Для JSON (см. выше) сериализуется автоматически.
+        credentials : {"omit","same-origin","include"}
+            Политика отправки куков/креденшлов (как в fetch()).
+        mode : {"cors","no-cors","same-origin"}
+            Режим CORS (как в fetch()).
+        redirect : {"follow","error","manual"}
+            Политика редиректов JS-уровня (на протокол не влияет; финальный ответ мы определяем сами).
+        referrer : str | None
+            Явный реферер (если не задан — возьмём из `headers["referer"]`, если он там есть).
+        timeout_ms : int
+            Общий таймаут ожидания сетевых событий, миллисекунды.
+
+        Возвращает
+        ----------
+        FetchResponse
+            Объект с полями:
+              • `request: FetchRequest` (метод, исходный URL, исходные заголовки/тело);
+              • `url: URL` — финальный URL после редиректов;
+              • `headers: dict[str,str]` — **полные** заголовки ответа (в нижнем регистре);
+              • `raw: bytes` — «сырое» тело ответа;
+              • `status_code: int`;
+              • `duration: float` — длительность запроса (секунды);
+              • `end_time: float` — UNIX-время окончания.
+
+        Исключения
+        ----------
+        RuntimeError
+            • `"network error: … | <METHOD> <URL>"` — реальная ошибка сети/соединения без следующего hop;
+            • `"no response object"` — завершение без объекта ответа (аномалия).
+        Также метод завершится исключением, если страница/контекст закрыты во время выполнения
+        (например, `TargetClosedError` из Playwright при `evaluate`).
+
+        Пример
+        ------
+        >>> from camoufox.async_api import AsyncCamoufox
+        >>> from human_requests import HumanBrowser
+        >>> from human_requests.abstraction import HttpMethod
+        >>> import asyncio, json
+        >>>
+        >>> async def demo():
+        ...     async with AsyncCamoufox() as b:
+        ...         b = HumanBrowser.replace(b)
+        ...         ctx = await b.new_context()
+        ...         page = await ctx.new_page()
+        ...         # GET с обходом CORS на протокольном уровне:
+        ...         resp = await page.fetch(
+        ...             url="https://httpbin.org/get",
+        ...             method=HttpMethod.GET,
+        ...             mode="no-cors",
+        ...         )
+        ...         print(resp.status_code, len(resp.raw), resp.headers.get("content-type"))
+        ...
+        ...         # POST JSON: тело сериализуется автоматически при Content-Type: application/json
+        ...         resp2 = await page.fetch(
+        ...             url="https://httpbin.org/post",
+        ...             method=HttpMethod.POST,
+        ...             headers={"Content-Type": "application/json"},
+        ...             body={"hello": "world"},
+        ...         )
+        ...         data = json.loads(resp2.raw.decode("utf-8", "replace"))
+        ...         print(data["json"])
+        ...         await b.close()
+        >>>
+        >>> asyncio.run(demo())
         """
+
+        start_t = time.perf_counter()
         declared_headers = {k.lower(): v for k, v in (headers or {}).items()}
 
         js_body: Any = body
@@ -263,8 +359,6 @@ class HumanPage(Page):
             "content-type", ""
         ).lower().startswith("application/json"):
             js_body = json.dumps(body, ensure_ascii=False)
-
-        start_t = time.perf_counter()
 
         # Подготовка тела для JS (JSON -> строка при нужном content-type)
         js_body: Any = body
