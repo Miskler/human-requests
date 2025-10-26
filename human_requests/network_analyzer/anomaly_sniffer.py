@@ -1,10 +1,15 @@
 from __future__ import annotations
+
 import asyncio
+import re
 from collections import defaultdict
-from typing import Dict, Set, Iterable, Optional, Callable
+from typing import Dict, Set, Iterable, Optional, Callable, Pattern, Union
 from urllib.parse import urlsplit, urlunsplit
 
 from playwright.async_api import BrowserContext, Request, Response
+
+
+UrlFilter = Optional[Union[Callable[[str], bool], str, Pattern[str]]]
 
 
 class HeaderAnomalySniffer:
@@ -53,13 +58,33 @@ class HeaderAnomalySniffer:
         allowed_prefixes: Iterable[str] = (),
         include_subresources: bool = True,
         url_key: Optional[Callable[[str], str]] = None,
+        url_filter: UrlFilter = None,
     ) -> None:
         self._req_allow = set(self._REQ_STD) | {h.lower() for h in extra_request_allow}
         self._resp_allow = set(self._RESP_STD) | {h.lower() for h in extra_response_allow}
         self._allowed_pref = tuple(self._STD_PREFIXES) + tuple(allowed_prefixes)
         self._include_sub = include_subresources
-        # нормализация URL по умолчанию: без фрагмента
-        self._url_key = url_key or (lambda u: urlunsplit(urlsplit(u)._replace(fragment="")))
+
+        # нормализация URL по умолчанию: без фрагмента и без хвостового "/"
+        if url_key:
+            self._url_key = url_key
+        else:
+            def _default_url_key(u: str) -> str:
+                us = urlsplit(u)
+                path = us.path.rstrip("/") or "/"
+                return urlunsplit(us._replace(path=path, fragment=""))
+            self._url_key = _default_url_key
+
+        # фильтр URL: callable/regex/None
+        self._url_filter_fn: Optional[Callable[[str], bool]] = None
+        if url_filter is None:
+            self._url_filter_fn = None
+        elif callable(url_filter):
+            self._url_filter_fn = url_filter  # type: ignore[assignment]
+        else:
+            # строка с регекспом или скомпилированный pattern
+            pat: Pattern[str] = re.compile(url_filter) if isinstance(url_filter, str) else url_filter
+            self._url_filter_fn = lambda s, _p=pat: bool(_p.search(s))
 
         self._ctx: Optional[BrowserContext] = None
         self._started = False
@@ -68,11 +93,11 @@ class HeaderAnomalySniffer:
         self._req_map: Dict[str, Dict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
         self._resp_map: Dict[str, Dict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
 
-        # ссылки на колбэки, чтобы корректно удалить
+        # ссылки на колбэки
         self._req_cb = None
         self._resp_cb = None
 
-        # задачи под async-части
+        # пул задач
         self._tasks: Set[asyncio.Task] = set()
         self._lock = asyncio.Lock()
 
@@ -86,7 +111,6 @@ class HeaderAnomalySniffer:
         def on_req(req: Request) -> None:
             if not self._started:
                 return
-            # фильтр документов / main-frame при необходимости
             if not self._include_sub:
                 try:
                     if not req.is_navigation_request() or req.resource_type != "document" or req.frame.parent is not None:
@@ -118,13 +142,12 @@ class HeaderAnomalySniffer:
         ctx.on("response", on_resp)
         self._started = True
 
-    async def complite(self) -> Dict[str, Dict[str, Dict[str, list[str]]]]:
+    async def complete(self) -> Dict[str, Dict[str, Dict[str, list[str]]]]:
         if not self._started or self._ctx is None:
             raise RuntimeError("sniffer not started")
         self._started = False
 
-        # корректное отписывание по докам: remove_listener
-        # (пример на странице «Events» для Python) :contentReference[oaicite:2]{index=2}
+        # официальная отписка
         if self._req_cb:
             self._ctx.remove_listener("request", self._req_cb)
         if self._resp_cb:
@@ -147,9 +170,10 @@ class HeaderAnomalySniffer:
     # ---------- внутреннее ----------
 
     async def _handle_request(self, req: Request) -> None:
-        # request.headers: уже lower-cased; cookies могут отсутствовать — это ок для нашей задачи
-        headers: Dict[str, str] = getattr(req, "headers", {}) or {}
         url = self._url_key(req.url)
+        if self._url_filter_fn and not self._url_filter_fn(url):
+            return
+        headers: Dict[str, str] = getattr(req, "headers", {}) or {}
         unknown = {k.lower(): v for k, v in headers.items() if self._is_unknown_req(k)}
         if not unknown:
             return
@@ -158,9 +182,10 @@ class HeaderAnomalySniffer:
                 self._req_map[url][h].add(val)
 
     async def _handle_response(self, resp: Response) -> None:
-        # response.all_headers(): полный набор (Python async API — await) :contentReference[oaicite:3]{index=3}
-        headers: Dict[str, str] = await resp.all_headers()
         url = self._url_key(resp.url)
+        if self._url_filter_fn and not self._url_filter_fn(url):
+            return
+        headers: Dict[str, str] = await resp.all_headers()
         unknown = {k.lower(): v for k, v in headers.items() if self._is_unknown_resp(k)}
         if not unknown:
             return

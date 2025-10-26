@@ -330,7 +330,7 @@ class HumanPage(Page):
         if evt_failed in done:
             failure = cur.failure  # dict | None
             msg = (failure or {}).get("errorText") if isinstance(failure, dict) else None
-            raise RuntimeError(str(msg))
+            raise RuntimeError(str(failure))
             raise RuntimeError(f"network error: {msg or 'unknown'} | {method.value} {url}")
 
         # Успех сети: читаем ответ целиком
