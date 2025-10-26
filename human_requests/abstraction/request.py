@@ -1,14 +1,18 @@
 from dataclasses import dataclass
-from typing import Optional
-
-from playwright.async_api import Cookie
+from typing import TYPE_CHECKING, Optional
 
 from .http import URL, HttpMethod
+
+if TYPE_CHECKING:
+    from ..human_page import HumanPage
 
 
 @dataclass(frozen=True)
 class FetchRequest:
     """Represents all the data passed in the request."""
+
+    page: "HumanPage"
+    """The page that made the request."""
 
     method: HttpMethod
     """The method used in the request."""

@@ -3,10 +3,34 @@ from __future__ import annotations
 import asyncio
 import re
 from collections import defaultdict
-from typing import Callable, Dict, Iterable, Optional, Pattern, Set, Union
+from dataclasses import dataclass
+from enum import Enum, auto
+from typing import Callable, Dict, Iterable, List, Optional, Pattern, Set, Union
 from urllib.parse import urlsplit, urlunsplit
 
 from playwright.async_api import BrowserContext, Request, Response
+
+# --- WAIT API -----------------------------------------------------------------
+
+
+class WaitSource(Enum):
+    REQUEST = auto()
+    RESPONSE = auto()
+    ALL = auto()
+
+
+@dataclass(frozen=True)
+class WaitHeader:
+    source: WaitSource = WaitSource.ALL  # источник: запросы/ответы/оба
+    headers: List[str] = None  # список имён заголовков (case-insensitive)
+
+    def __post_init__(self):
+        if not self.headers:
+            raise ValueError("WaitHeader.headers must be non-empty")
+        object.__setattr__(self, "headers", [h.lower() for h in self.headers])
+
+
+# --- SNIFFER ------------------------------------------------------------------
 
 UrlFilter = Optional[Union[Callable[[str], bool], str, Pattern[str]]]
 
@@ -51,7 +75,7 @@ class HeaderAnomalySniffer:
         "sec-fetch-site",
         "sec-fetch-user",
         "x-requested-with",
-        "purpose",
+        "purpose",  # prefetch hint
     }
     _RESP_STD: Set[str] = {
         "accept-ch",
@@ -91,10 +115,7 @@ class HeaderAnomalySniffer:
         "location",
         "connection",
     }
-    _STD_PREFIXES = (
-        "sec-",
-        "access-control-",
-    )  # префиксы, которые считаем «нормальными»
+    _STD_PREFIXES = ("sec-", "access-control-")  # CORS/CH префиксы считаем стандартными
 
     def __init__(
         self,
@@ -150,6 +171,9 @@ class HeaderAnomalySniffer:
         # пул задач
         self._tasks: Set[asyncio.Task] = set()
         self._lock = asyncio.Lock()
+        self._wait_cond = asyncio.Condition(
+            self._lock
+        )  # уведомляем при каждом новом аномальном хедере
 
     # ---------- API ----------
 
@@ -215,15 +239,42 @@ class HeaderAnomalySniffer:
             await asyncio.gather(*list(self._tasks))
             self._tasks.clear()
 
-        out_req = {
-            url: {h: sorted(vals) for h, vals in hmap.items()}
-            for url, hmap in self._req_map.items()
-        }
-        out_resp = {
-            url: {h: sorted(vals) for h, vals in hmap.items()}
-            for url, hmap in self._resp_map.items()
-        }
-        return {"request": out_req, "response": out_resp}
+        return self._snapshot()
+
+    async def wait(
+        self, *, tasks: List[WaitHeader], timeout_ms: int = 30000
+    ) -> Dict[str, Dict[str, Dict[str, list[str]]]]:
+        """
+        Ждёт, пока в ЛОГЕ аномалий появятся все указанные заголовки (для каждого WaitHeader).
+        Учитываются только записи, прошедшие url_filter и «нестандартность».
+
+        tasks:
+            список условий. Для каждого WaitHeader все его headers должны встретиться
+            хотя бы по одному значению, хотя бы на одном URL.
+            source=REQUEST/RESPONSE/ALL ограничивает источник поиска.
+
+        timeout_ms:
+            общий таймаут ожидания (мс). По таймауту — TimeoutError.
+
+        Возвращает:
+            текущий снапшот (как у complete), НЕ останавливает сниффер.
+        """
+        if not self._started:
+            raise RuntimeError("sniffer not started")
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000.0)
+
+        async with self._wait_cond:
+            # быстрый путь — уже всё есть
+            if self._wait_satisfied(tasks):
+                return self._snapshot()
+
+            while True:
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    raise TimeoutError("wait: timeout")
+                await asyncio.wait_for(self._wait_cond.wait(), timeout=remaining)
+                if self._wait_satisfied(tasks):
+                    return self._snapshot()
 
     # ---------- внутреннее ----------
 
@@ -237,7 +288,11 @@ class HeaderAnomalySniffer:
             return
         async with self._lock:
             for h, val in unknown.items():
+                # добавляем значение и нотифицируем wait-ожидания
+                before = len(self._req_map[url][h])
                 self._req_map[url][h].add(val)
+                if len(self._req_map[url][h]) != before:
+                    self._wait_cond.notify_all()
 
     async def _handle_response(self, resp: Response) -> None:
         url = self._url_key(resp.url)
@@ -249,7 +304,12 @@ class HeaderAnomalySniffer:
             return
         async with self._lock:
             for h, val in unknown.items():
+                before = len(self._resp_map[url][h])
                 self._resp_map[url][h].add(val)
+                if len(self._resp_map[url][h]) != before:
+                    self._wait_cond.notify_all()
+
+    # ---------- utils ----------
 
     def _is_unknown_req(self, name: str) -> bool:
         n = name.lower()
@@ -258,3 +318,41 @@ class HeaderAnomalySniffer:
     def _is_unknown_resp(self, name: str) -> bool:
         n = name.lower()
         return n not in self._resp_allow and not n.startswith(self._allowed_pref)
+
+    def _union_req_headers(self) -> Set[str]:
+        out: Set[str] = set()
+        for _, hmap in self._req_map.items():
+            out.update(hmap.keys())
+        return out
+
+    def _union_resp_headers(self) -> Set[str]:
+        out: Set[str] = set()
+        for _, hmap in self._resp_map.items():
+            out.update(hmap.keys())
+        return out
+
+    def _wait_satisfied(self, tasks: List[WaitHeader]) -> bool:
+        req_union = self._union_req_headers()
+        resp_union = self._union_resp_headers()
+        for t in tasks:
+            need = set(t.headers)
+            if t.source is WaitSource.REQUEST:
+                have = req_union
+            elif t.source is WaitSource.RESPONSE:
+                have = resp_union
+            else:
+                have = req_union | resp_union
+            if not need.issubset(have):
+                return False
+        return True
+
+    def _snapshot(self) -> Dict[str, Dict[str, Dict[str, list[str]]]]:
+        request_out = {
+            url: {h: sorted(vals) for h, vals in hmap.items()}
+            for url, hmap in self._req_map.items()
+        }
+        response_out = {
+            url: {h: sorted(vals) for h, vals in hmap.items()}
+            for url, hmap in self._resp_map.items()
+        }
+        return {"request": request_out, "response": response_out}

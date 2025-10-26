@@ -7,7 +7,6 @@ from .http import URL
 from .request import FetchRequest
 
 if TYPE_CHECKING:
-    from ..human_context import HumanContext
     from ..human_page import HumanPage
 
 
@@ -18,7 +17,7 @@ class FetchResponse:
     request: FetchRequest
     """The request that was made."""
 
-    page: HumanPage
+    page: "HumanPage"
     """The page that made the request."""
 
     url: URL
@@ -72,5 +71,7 @@ class FetchResponse:
 
         Recommended to use in cases when the server returns a JS challenge instead of a response."""
         page = await self.page.context.new_page()
-        await page.goto_render(self, wait_until=wait_until, referer=referer, timeout=timeout, retry=retry)
+        await page.goto_render(
+            self, wait_until=wait_until, referer=referer, timeout=timeout, retry=retry
+        )
         return page

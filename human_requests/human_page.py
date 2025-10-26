@@ -403,8 +403,7 @@ class HumanPage(Page):
         )
 
         cur = first_req
-        timeout_s = timeout_ms / 1000.0
-        redirect_grace = 0.4  # 400ms на появление следующего hop при abort/3xx
+        redirect_grace = 1  # 1000ms на появление следующего hop при abort/3xx
 
         while True:
             t_next = asyncio.create_task(
@@ -490,6 +489,7 @@ class HumanPage(Page):
         resp_headers = {k.lower(): v for k, v in (await resp.all_headers()).items()}
 
         req_model = FetchRequest(
+            page=self,
             method=method,
             url=URL(full_url=url),
             headers=declared_headers,
@@ -497,6 +497,7 @@ class HumanPage(Page):
         )
         resp_model = FetchResponse(
             request=req_model,
+            page=self,
             url=URL(full_url=resp.url),
             headers=resp_headers,
             raw=raw,

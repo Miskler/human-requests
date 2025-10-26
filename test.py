@@ -1,7 +1,7 @@
 from camoufox.async_api import AsyncCamoufox
 from human_requests import HumanBrowser
 from human_requests.abstraction import HttpMethod
-from human_requests.network_analyzer.anomaly_sniffer import HeaderAnomalySniffer
+from human_requests.network_analyzer.anomaly_sniffer import HeaderAnomalySniffer, WaitSource, WaitHeader
 from pprint import pprint
 import time
 import json
@@ -28,7 +28,20 @@ async def main():
 
         await page.goto("https://5ka.ru", wait_until="load")
         await page.wait_for_selector(selector="next-route-announcer", state="attached")
-        await asyncio.sleep(5)  # ждем, чтобы все запросы ушли
+        #await asyncio.sleep(5)  # ждем, чтобы все запросы ушли
+        await sniffer.wait(
+            tasks=[
+                WaitHeader(
+                    source=WaitSource.REQUEST,
+                    headers=[
+                        "x-app-version",
+                        "x-device-id",
+                        "x-platform"
+                    ]
+                )
+            ],
+            timeout_ms=10000
+        )
 
         pprint(await sniffer.complete())
 
