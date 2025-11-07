@@ -13,6 +13,9 @@ from playwright.async_api import Response as PWResponse
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from typing_extensions import override
 
+from contextlib import suppress
+import secrets as _secrets
+
 from .abstraction.http import URL, HttpMethod
 from .abstraction.request import FetchRequest
 from .abstraction.response import FetchResponse
@@ -251,265 +254,151 @@ class HumanPage(Page):
         timeout_ms: int = 30000,
     ) -> FetchResponse:
         """
-        Выполняет HTTP-запрос «изнутри» страницы и возвращает *протокольный* ответ как `FetchResponse`.
+        Выполняет реальный JS fetch и возвращает последний зафиксированный ответ,
+        который достаточно похож на тот, который был отправлен (последний после завершения js ответ,
+        request которого совпадает с нужным по URL и method).
 
-        Как это работает
-        ----------------
-        Метод запускает короткий JS-`fetch(...)` лишь как **триггер сети**, а сами данные ответа
-        (статус, заголовки, «сырые» байты) читает через сетевые события браузера (Playwright API).
-        Благодаря этому:
-          • игнорируются CORS-ограничения JS: `resp.raw` — это всегда байты тела (если сервер их прислал);
-          • корректно ведётся цепочка редиректов; возвращается финальный ответ;
-          • не используются `page.route(...)` — отсутствуют конфликты с чужими перехватчиками и накладные расходы.
+        Таким образом гарантируется, что разные запросы не будут перепутаны.
+        Даже одинаковые запросы, теоритически не будут перепутаны, т.к. мы орентируемся на завершения js логики,
+        последний зарегистрированный в этот момент ответ с высокой вероятностью ему и пришел.
 
-        Поведение и особенности
-        -----------------------
-        • `headers`: передаются в запрос; заголовок `Referer` брать из аргумента `referrer`
-          (если вы передали `'referer'` в `headers`, он будет автоматически использован как `referrer`).
-        • `body`: если это `dict`/`list` **и** `Content-Type: application/json`,
-          тело будет сериализовано `json.dumps(..., ensure_ascii=False)`. В остальных случаях передайте готовую строку.
-        • `mode="no-cors"`: JS-уровень увидит «opaque», но метод всё равно вернёт тело и заголовки,
-          т.к. они считываются из протокола.
-        • Редиректы: цепочка отслеживается по объектам `Request`. Типичные FF-аборты на редиректе
-          (`NS_BINDING_ABORTED`) не считаются ошибкой, если сразу появляется следующий hop.
-        • Параллельность: корреляция первого запроса идёт по URL+методу в *том же фрейме*, где выполняется `evaluate`.
-          Если на странице в этот же момент стартует другой запрос с **тем же** URL/методом из того же фрейма,
-          возможна коллизия. Избегайте одновременных идентичных запросов или различайте их заголовками/квери.
+        Ответ НЕ извлекается напрямую из js, т.к. некоторые ответы могут быть заблокированны CORS.
 
-        Параметры
-        ---------
-        url : str
-            Адрес запроса (фрагмент `#...` игнорируется при сопоставлении).
-        method : HttpMethod, по умолчанию GET
-            HTTP-метод.
-        headers : dict[str, str] | None
-            Заголовки запроса. `Referer` берите из `referrer` (или положите сюда — мы переложим).
-        body : str | list | dict | None
-            Тело запроса. Для JSON (см. выше) сериализуется автоматически.
-        credentials : {"omit","same-origin","include"}
-            Политика отправки куков/креденшлов (как в fetch()).
-        mode : {"cors","no-cors","same-origin"}
-            Режим CORS (как в fetch()).
-        redirect : {"follow","error","manual"}
-            Политика редиректов JS-уровня (на протокол не влияет; финальный ответ мы определяем сами).
-        referrer : str | None
-            Явный реферер (если не задан — возьмём из `headers["referer"]`, если он там есть).
-        timeout_ms : int
-            Общий таймаут ожидания сетевых событий, миллисекунды.
+        Принцип:
+        1. Запускаем прослушку событий request/response.
+        2. Выполняем page.evaluate(fetch(...)).
+        3. После завершения JS промиса смотрим, какой последний response был образов от request с нужными параметрами.
+        4. Возвращаем тело, статус и заголовки из этого последнего response.
 
-        Возвращает
-        ----------
-        FetchResponse
-            Объект с полями:
-              • `request: FetchRequest` (метод, исходный URL, исходные заголовки/тело);
-              • `url: URL` — финальный URL после редиректов;
-              • `headers: dict[str,str]` — **полные** заголовки ответа (в нижнем регистре);
-              • `raw: bytes` — «сырое» тело ответа;
-              • `status_code: int`;
-              • `duration: float` — длительность запроса (секунды);
-              • `end_time: float` — UNIX-время окончания.
-
-        Исключения
-        ----------
-        RuntimeError
-            • `"network error: … | <METHOD> <URL>"` — реальная ошибка сети/соединения без следующего hop;
-            • `"no response object"` — завершение без объекта ответа (аномалия).
-        Также метод завершится исключением, если страница/контекст закрыты во время выполнения
-        (например, `TargetClosedError` из Playwright при `evaluate`).
-
-        Пример
-        ------
-        >>> from camoufox.async_api import AsyncCamoufox
-        >>> from human_requests import HumanBrowser
-        >>> from human_requests.abstraction import HttpMethod
-        >>> import asyncio, json
-        >>>
-        >>> async def demo():
-        ...     async with AsyncCamoufox() as b:
-        ...         b = HumanBrowser.replace(b)
-        ...         ctx = await b.new_context()
-        ...         page = await ctx.new_page()
-        ...         # GET с обходом CORS на протокольном уровне:
-        ...         resp = await page.fetch(
-        ...             url="https://httpbin.org/get",
-        ...             method=HttpMethod.GET,
-        ...             mode="no-cors",
-        ...         )
-        ...         print(resp.status_code, len(resp.raw), resp.headers.get("content-type"))
-        ...
-        ...         # POST JSON: тело сериализуется автоматически при Content-Type: application/json
-        ...         resp2 = await page.fetch(
-        ...             url="https://httpbin.org/post",
-        ...             method=HttpMethod.POST,
-        ...             headers={"Content-Type": "application/json"},
-        ...             body={"hello": "world"},
-        ...         )
-        ...         data = json.loads(resp2.raw.decode("utf-8", "replace"))
-        ...         print(data["json"])
-        ...         await b.close()
-        >>>
-        >>> asyncio.run(demo())
+        Пример:
+            result = await page.fetch(
+                "https://example.com/api/data",
+                method=HttpMethod.POST,
+                headers={"Content-Type": "application/json"},
+                body={"user": "mike"}
+            )
+            print(result.status_code, result.json())
         """
+        fid = _secrets.token_hex(6)
+        start = time.perf_counter()
+        _log = lambda msg: print(f"[fetch:{fid}][{(time.perf_counter()-start)*1000:7.1f} ms] {msg}")
 
-        start_t = time.perf_counter()
-        declared_headers = {k.lower(): v for k, v in (headers or {}).items()}
+        method_str = method.value.upper()
+        norm_url = url.split("#")[0]
 
-        js_body: Any = body
-        if isinstance(body, (dict, list)) and declared_headers.get(
-            "content-type", ""
-        ).lower().startswith("application/json"):
-            js_body = json.dumps(body, ensure_ascii=False)
+        js_headers = headers or {}
+        js_body = body
+        if isinstance(body, (dict, list)):
+            js_body = json.dumps(body)
+            js_headers.setdefault("Content-Type", "application/json")
 
-        # Подготовка тела для JS (JSON -> строка при нужном content-type)
-        js_body: Any = body
-        if isinstance(body, (dict, list)) and declared_headers.get(
-            "content-type", ""
-        ).lower().startswith("application/json"):
-            js_body = json.dumps(body, ensure_ascii=False)
+        # будем собирать ответы пока жив JS fetch
+        captured_responses = []
 
-        # 1) Запускаем JS fetch (только триггер сети; тело/хедеры читаем с протокола)
-        _JS_PATH = Path(__file__).parent / "fetch.js"
-        JS_FETCH = _JS_PATH.read_text(encoding="utf-8")
-        eval_task = asyncio.create_task(
-            self.evaluate(
-                JS_FETCH,
-                dict(
+        # helper: walk request chain (request + its redirected_from ancestors)
+        def _chain_matches(req) -> bool:
+            cur = req
+            while cur is not None:
+                try:
+                    rmethod = getattr(cur, "method", None)
+                    rurl = getattr(cur, "url", None)
+                except Exception as e:
+                    _log("Error when try get method/url in response chain: "+e.__repr__)
+                    rmethod = None
+                    rurl = None
+                if rmethod and rurl:
+                    if rmethod.upper() == method_str and rurl.split("#")[0] == norm_url:
+                        return True
+                cur = getattr(cur, "redirected_from", None)
+            return False
+
+        async def on_response(resp):
+            try:
+                req = getattr(resp, "request", None)
+                if req is None:
+                    return
+                if _chain_matches(req):
+                    captured_responses.append(resp)
+            except Exception as e:
+                _log("Error when try on_response: "+e.__repr__)
+                # никогда не ломаем основную логику сниффером
+                return
+
+        self.on("response", on_response)
+
+        try:
+            _log(f"START {method_str} {url}")
+
+            js_code = """
+            async ({ url, method, headers, body, credentials, mode, redirect, ref, timeoutMs }) => {
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+                try {
+
+                    const init = { method, headers, credentials, mode, redirect, signal: ctrl.signal };
+                    if (ref) init.referrer = ref;
+                    if (body !== undefined && body !== null) init.body = body;
+
+                    const res = await fetch(url, init);
+
+                    clearTimeout(timer);
+                    return { ok: true, status: res.status };
+                } catch (err) {
+                    clearTimeout(timer);
+                    return { ok: false, errorName: err.name, error: err?.message || String(err) };
+                }
+            }
+            """
+
+            result = await asyncio.wait_for(
+                self.evaluate(js_code, dict(
                     url=url,
-                    method=method.value,
-                    headers={k: v for k, v in declared_headers.items() if k != "referer"} or {},
+                    method=method_str,
+                    headers=js_headers,
                     body=js_body,
                     credentials=credentials,
                     mode=mode,
                     redirect=redirect,
-                    ref=referrer or declared_headers.get("referer"),
+                    ref=referrer,
                     timeoutMs=timeout_ms,
-                ),
+                )),
+                timeout=timeout_ms / 1000 + 1,
             )
-        )
 
-        # Нормализуем URL без фрагмента
-        def _norm(u: str) -> str:
-            return urlsplit(u)._replace(fragment="").geturl()
+            if not captured_responses:
+                _log("Raise")
+                if not result.get("ok"):
+                    raise RuntimeError(f"JS fetch failed: {result.get('error')}")
+                raise RuntimeError("no matching responses captured")
 
-        target_url_norm = _norm(url)
-        target_method = method.value.lower()
+            last_resp = captured_responses[-1]
+            _log(f"using last response (of {len(captured_responses)}): {last_resp.url} ({last_resp.status})")
 
-        # 2) Ждём первый request к нужному URL/методу
-        first_req = await self.wait_for_event(
-            "request",
-            predicate=lambda r: r.method.lower() == target_method
-            and _norm(r.url) == target_url_norm,
-            timeout=timeout_ms,
-        )
+            body_bytes = await last_resp.body()
+            headers = {k.lower(): v for k, v in (await last_resp.all_headers()).items()}
 
-        cur = first_req
-        redirect_grace = 1  # 1000ms на появление следующего hop при abort/3xx
-
-        while True:
-            t_next = asyncio.create_task(
-                self.wait_for_event(
-                    "request",
-                    predicate=lambda r, _cur=cur: getattr(r, "redirected_from", None) is _cur,
-                    timeout=timeout_ms,
-                )
+            req_model = FetchRequest(
+                page=self,
+                method=method,
+                url=URL(full_url=url),
+                headers=js_headers,
+                body=body,
             )
-            t_fin = asyncio.create_task(
-                self.wait_for_event(
-                    "requestfinished", predicate=lambda r, _cur=cur: r is _cur, timeout=timeout_ms
-                )
+            return FetchResponse(
+                request=req_model,
+                page=self,
+                url=URL(full_url=last_resp.url),
+                status_code=last_resp.status,
+                headers=headers,
+                raw=body_bytes,
+                duration=(time.perf_counter() - start),
+                end_time=time.time(),
             )
-            t_fail = asyncio.create_task(
-                self.wait_for_event(
-                    "requestfailed", predicate=lambda r, _cur=cur: r is _cur, timeout=timeout_ms
-                )
-            )
-            done, pending = await asyncio.wait(
-                {t_next, t_fin, t_fail}, return_when=asyncio.FIRST_COMPLETED
-            )
-            for p in pending:
-                p.cancel()
 
-            # 2.1 redirect: есть следующий hop
-            if t_next in done and t_next.exception() is None:
-                cur = t_next.result()
-                continue
+        finally:
+            self.remove_listener("response", on_response)
+            pass#self.off("response", on_response)
 
-            # 2.2 fail: возможно abort из-за редиректа
-            if t_fail in done and t_fail.exception() is None:
-                failure_req = t_fail.result()
-                failure = getattr(failure_req, "failure", None) or {}
-                err_text = failure.get("errorText") if isinstance(failure, dict) else None
-
-                # даём короткую фразу на появление next hop после abort
-                t_quick = asyncio.create_task(
-                    self.wait_for_event(
-                        "request",
-                        predicate=lambda r, _cur=cur: getattr(r, "redirected_from", None) is _cur,
-                        timeout=int(redirect_grace * 1000),
-                    )
-                )
-                await asyncio.wait({t_quick}, timeout=redirect_grace)
-                if t_quick.done() and t_quick.exception() is None:
-                    cur = t_quick.result()
-                    continue
-
-                # реальный провал сети
-                await eval_task
-                raise RuntimeError(f"network error: {err_text or 'unknown'} | {method.value} {url}")
-
-            # 2.3 finished: возможно 3xx -> ждём hop
-            if t_fin in done and t_fin.exception() is None:
-                resp_try = await cur.response()
-                status = int(getattr(resp_try, "status", 0)) if resp_try is not None else 0
-                if 300 <= status < 400:
-                    t_quick = asyncio.create_task(
-                        self.wait_for_event(
-                            "request",
-                            predicate=lambda r, _cur=cur: getattr(r, "redirected_from", None)
-                            is _cur,
-                            timeout=int(redirect_grace * 1000),
-                        )
-                    )
-                    await asyncio.wait({t_quick}, timeout=redirect_grace)
-                    if t_quick.done() and t_quick.exception() is None:
-                        cur = t_quick.result()
-                        continue
-                # финал
-                resp = resp_try
-                break
-
-        duration = time.perf_counter() - start_t
-        end_epoch = time.time()
-
-        if resp is None:
-            await eval_task
-            raise RuntimeError("no response object")
-
-        raw = await resp.body()
-        resp_headers = {k.lower(): v for k, v in (await resp.all_headers()).items()}
-
-        req_model = FetchRequest(
-            page=self,
-            method=method,
-            url=URL(full_url=url),
-            headers=declared_headers,
-            body=body,
-        )
-        resp_model = FetchResponse(
-            request=req_model,
-            page=self,
-            url=URL(full_url=resp.url),
-            headers=resp_headers,
-            raw=raw,
-            status_code=int(resp.status),
-            duration=duration,
-            end_time=end_epoch,
-        )
-
-        # 4) Дожимаем JS-fetch (если он упал из-за CORS — это уже не критично)
-        await eval_task
-
-        return resp_model
 
     async def wait_for_request(
         self,

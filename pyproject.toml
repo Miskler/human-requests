@@ -28,19 +28,9 @@ keywords = []
 dependencies = [
     "curl-cffi",
     "browserforge",
-    "ua-parser[regex]"
+    "ua-parser[regex]",
+    "playwright"
 ]
-
-[project.optional-dependencies]
-playwright         = ["playwright"]
-stealth-playwright = ["playwright",
-                      "playwright-stealth"] # Тянет playwright зависимостью
-camoufox           = ["camoufox[geoip]"]
-patchright         = ["patchright"]
-all                = ["playwright",
-                      "playwright-stealth",
-                      "camoufox[geoip]",
-                      "patchright"]
 
 [project.urls]
 Homepage = "https://github.com/Miskler/human-requests"

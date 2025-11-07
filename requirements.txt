@@ -1,7 +1,5 @@
 playwright
-playwright-stealth
 camoufox[geoip]
-patchright
 
 curl-cffi
 browserforge
