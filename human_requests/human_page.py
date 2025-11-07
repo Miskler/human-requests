@@ -254,151 +254,75 @@ class HumanPage(Page):
         timeout_ms: int = 30000,
     ) -> FetchResponse:
         """
-        Выполняет реальный JS fetch и возвращает последний зафиксированный ответ,
-        который достаточно похож на тот, который был отправлен (последний после завершения js ответ,
-        request которого совпадает с нужным по URL и method).
-
-        Таким образом гарантируется, что разные запросы не будут перепутаны.
-        Даже одинаковые запросы, теоритически не будут перепутаны, т.к. мы орентируемся на завершения js логики,
-        последний зарегистрированный в этот момент ответ с высокой вероятностью ему и пришел.
-
-        Ответ НЕ извлекается напрямую из js, т.к. некоторые ответы могут быть заблокированны CORS.
-
-        Принцип:
-        1. Запускаем прослушку событий request/response.
-        2. Выполняем page.evaluate(fetch(...)).
-        3. После завершения JS промиса смотрим, какой последний response был образов от request с нужными параметрами.
-        4. Возвращаем тело, статус и заголовки из этого последнего response.
-
-        Пример:
-            result = await page.fetch(
-                "https://example.com/api/data",
-                method=HttpMethod.POST,
-                headers={"Content-Type": "application/json"},
-                body={"user": "mike"}
-            )
-            print(result.status_code, result.json())
+        Тонкая прослойка над JS fetch: выполняет запрос внутри страницы и возвращает ResponseModel.
+        • Без route / wait_for_event.
+        • raw — ВСЕГДА распакованные байты (если тело доступно JS).
+        • При opaque-ответе тело/заголовки могут быть недоступны — это ограничение CORS.
         """
-        fid = _secrets.token_hex(6)
-        start = time.perf_counter()
-        _log = lambda msg: print(f"[fetch:{fid}][{(time.perf_counter()-start)*1000:7.1f} ms] {msg}")
+        declared_headers = {k.lower(): v for k, v in (headers or {}).items()}
+        js_headers = {k: v for k, v in declared_headers.items() if k != "referer"}
+        js_ref = referrer or declared_headers.get("referer")
 
-        method_str = method.value.upper()
-        norm_url = url.split("#")[0]
+        js_body: Any = body
+        if isinstance(body, (dict, list)) and declared_headers.get("content-type", "").lower().startswith("application/json"):
+            js_body = json.dumps(body, ensure_ascii=False)
 
-        js_headers = headers or {}
-        js_body = body
-        if isinstance(body, (dict, list)):
-            js_body = json.dumps(body)
-            js_headers.setdefault("Content-Type", "application/json")
+        start_t = time.perf_counter()
 
-        # будем собирать ответы пока жив JS fetch
-        captured_responses = []
+        _JS_PATH = Path(__file__).parent / "fetch.js"
+        JS_FETCH = _JS_PATH.read_text(encoding="utf-8")
 
-        # helper: walk request chain (request + its redirected_from ancestors)
-        def _chain_matches(req) -> bool:
-            cur = req
-            while cur is not None:
-                try:
-                    rmethod = getattr(cur, "method", None)
-                    rurl = getattr(cur, "url", None)
-                except Exception as e:
-                    _log("Error when try get method/url in response chain: "+e.__repr__)
-                    rmethod = None
-                    rurl = None
-                if rmethod and rurl:
-                    if rmethod.upper() == method_str and rurl.split("#")[0] == norm_url:
-                        return True
-                cur = getattr(cur, "redirected_from", None)
-            return False
+        result = await self.evaluate(
+            JS_FETCH,
+            dict(
+                url=url,
+                method=method.value,
+                headers=js_headers or {},
+                body=js_body,
+                credentials=credentials,
+                mode=mode,
+                redirect=redirect,
+                ref=js_ref,
+                timeoutMs=timeout_ms,
+            ),
+        )
+        print(f"FETCH RESULT: {result}", flush=True)
 
-        async def on_response(resp):
-            try:
-                req = getattr(resp, "request", None)
-                if req is None:
-                    return
-                if _chain_matches(req):
-                    captured_responses.append(resp)
-            except Exception as e:
-                _log("Error when try on_response: "+e.__repr__)
-                # никогда не ломаем основную логику сниффером
-                return
+        duration = time.perf_counter() - start_t
+        end_epoch = time.time()
 
-        self.on("response", on_response)
+        if not result.get("ok"):
+            raise RuntimeError(f"fetch failed: {result.get('error')}")
 
-        try:
-            _log(f"START {method_str} {url}")
+        # bytes в raw: распакованные (если body доступен)
+        b64 = result.get("bodyB64")
+        raw = base64.b64decode(b64) if isinstance(b64, str) else b""
 
-            js_code = """
-            async ({ url, method, headers, body, credentials, mode, redirect, ref, timeoutMs }) => {
-                const ctrl = new AbortController();
-                const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-                try {
+        # Нормализуем заголовки: если raw есть, уберём transport-атрибуты, чтобы не путать потребителя
+        resp_headers = {k.lower(): v for k, v in (result.get("headers") or {}).items()}
+        if raw:
+            resp_headers.pop("content-encoding", None)
+            resp_headers.pop("content-length", None)
 
-                    const init = { method, headers, credentials, mode, redirect, signal: ctrl.signal };
-                    if (ref) init.referrer = ref;
-                    if (body !== undefined && body !== null) init.body = body;
+        req_model = FetchRequest(
+            page=self,
+            method=method,
+            url=URL(full_url=url),
+            headers=declared_headers,
+            body=body,
+        )
 
-                    const res = await fetch(url, init);
-
-                    clearTimeout(timer);
-                    return { ok: true, status: res.status };
-                } catch (err) {
-                    clearTimeout(timer);
-                    return { ok: false, errorName: err.name, error: err?.message || String(err) };
-                }
-            }
-            """
-
-            result = await asyncio.wait_for(
-                self.evaluate(js_code, dict(
-                    url=url,
-                    method=method_str,
-                    headers=js_headers,
-                    body=js_body,
-                    credentials=credentials,
-                    mode=mode,
-                    redirect=redirect,
-                    ref=referrer,
-                    timeoutMs=timeout_ms,
-                )),
-                timeout=timeout_ms / 1000 + 1,
-            )
-
-            if not captured_responses:
-                _log("Raise")
-                if not result.get("ok"):
-                    raise RuntimeError(f"JS fetch failed: {result.get('error')}")
-                raise RuntimeError("no matching responses captured")
-
-            last_resp = captured_responses[-1]
-            _log(f"using last response (of {len(captured_responses)}): {last_resp.url} ({last_resp.status})")
-
-            body_bytes = await last_resp.body()
-            headers = {k.lower(): v for k, v in (await last_resp.all_headers()).items()}
-
-            req_model = FetchRequest(
-                page=self,
-                method=method,
-                url=URL(full_url=url),
-                headers=js_headers,
-                body=body,
-            )
-            return FetchResponse(
-                request=req_model,
-                page=self,
-                url=URL(full_url=last_resp.url),
-                status_code=last_resp.status,
-                headers=headers,
-                raw=body_bytes,
-                duration=(time.perf_counter() - start),
-                end_time=time.time(),
-            )
-
-        finally:
-            self.remove_listener("response", on_response)
-            pass#self.off("response", on_response)
-
+        resp_model = FetchResponse(
+            page=self,
+            request=req_model,
+            url=URL(full_url=result.get("finalUrl") or url),
+            headers=resp_headers,
+            raw=raw,     # всегда bytes; пусто если CORS не дал читать тело
+            status_code=int(result.get("status", 0)),
+            duration=duration,
+            end_time=end_epoch,
+        )
+        return resp_model
 
     async def wait_for_request(
         self,
