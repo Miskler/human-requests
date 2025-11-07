@@ -60,10 +60,7 @@ async def main():
             }
         )
 
-        #try:
-        #    pprint(result.json()[0].keys())
-        #except:
-        pprint(result.text)
+        pprint(result.json()[0].keys())
 
         await browser.close()
 

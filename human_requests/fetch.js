@@ -20,25 +20,26 @@ async ({ url, method, headers, body, credentials, mode, redirect, ref, timeoutMs
         bodyB64 = await new Promise((resolve) => {
             const fr = new FileReader();
             fr.onload = () => {
-            const s = String(fr.result || "");
-            const i = s.indexOf(",");
-            resolve(i >= 0 ? s.slice(i + 1) : "");
+                const s = String(fr.result || "");
+                const i = s.indexOf(",");
+                resolve(i >= 0 ? s.slice(i + 1) : "");
             };
             fr.onerror = () => resolve("");
             fr.readAsDataURL(blob);
         });
         } catch {
-        bodyB64 = null;                           // тело недоступно (opaque/CORS/ETP)
+            bodyB64 = null;                           // тело недоступно (opaque/CORS/ETP)
         }
 
         return {
-        ok: true,
-        finalUrl: r.url,
-        status: r.status,
-        type: r.type,            // basic|cors|opaque|opaque-redirect
-        redirected: r.redirected,
-        headers: headersObj,     // может быть пустым
-        bodyB64,                 // base64 распакованных байтов или null
+            ok: true,
+            finalUrl: r.url,
+            status: r.status,
+            statusText: r.statusText,
+            type: r.type,            // basic|cors|opaque|opaque-redirect
+            redirected: r.redirected,
+            headers: headersObj,     // может быть пустым
+            bodyB64,                 // base64 распакованных байтов или null
         };
     } catch (e) {
         return { ok: false, error: String(e) };

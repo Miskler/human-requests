@@ -32,6 +32,12 @@ class FetchResponse:
     status_code: int
     """The status code of the response."""
 
+    status_text: str
+
+    redirected: bool
+
+    type: Literal["basic", "cors", "error", "opaque", "opaqueredirect"]
+
     duration: float
     """The duration of the request in seconds."""
 

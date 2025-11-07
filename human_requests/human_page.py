@@ -286,10 +286,6 @@ class HumanPage(Page):
                 timeoutMs=timeout_ms,
             ),
         )
-        print(f"FETCH RESULT: {result}", flush=True)
-
-        duration = time.perf_counter() - start_t
-        end_epoch = time.time()
 
         if not result.get("ok"):
             raise RuntimeError(f"fetch failed: {result.get('error')}")
@@ -311,6 +307,9 @@ class HumanPage(Page):
             headers=declared_headers,
             body=body,
         )
+        
+        duration = time.perf_counter() - start_t
+        end_epoch = time.time()
 
         resp_model = FetchResponse(
             page=self,
@@ -319,6 +318,9 @@ class HumanPage(Page):
             headers=resp_headers,
             raw=raw,     # всегда bytes; пусто если CORS не дал читать тело
             status_code=int(result.get("status", 0)),
+            status_text=str(result.get("statusText", 'STATUS TEXT NOT AVAILABLE')),
+            redirected=bool(result.get("redirected", False)),
+            type=result.get("type", False),
             duration=duration,
             end_time=end_epoch,
         )
