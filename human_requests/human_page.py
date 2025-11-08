@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
 import time
@@ -12,9 +11,6 @@ from playwright.async_api import Cookie, Page
 from playwright.async_api import Response as PWResponse
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from typing_extensions import override
-
-from contextlib import suppress
-import secrets as _secrets
 
 from .abstraction.http import URL, HttpMethod
 from .abstraction.request import FetchRequest
@@ -264,7 +260,9 @@ class HumanPage(Page):
         js_ref = referrer or declared_headers.get("referer")
 
         js_body: Any = body
-        if isinstance(body, (dict, list)) and declared_headers.get("content-type", "").lower().startswith("application/json"):
+        if isinstance(body, (dict, list)) and declared_headers.get(
+            "content-type", ""
+        ).lower().startswith("application/json"):
             js_body = json.dumps(body, ensure_ascii=False)
 
         start_t = time.perf_counter()
@@ -307,7 +305,7 @@ class HumanPage(Page):
             headers=declared_headers,
             body=body,
         )
-        
+
         duration = time.perf_counter() - start_t
         end_epoch = time.time()
 
@@ -316,9 +314,9 @@ class HumanPage(Page):
             request=req_model,
             url=URL(full_url=result.get("finalUrl") or url),
             headers=resp_headers,
-            raw=raw,     # всегда bytes; пусто если CORS не дал читать тело
+            raw=raw,  # всегда bytes; пусто если CORS не дал читать тело
             status_code=int(result.get("status", 0)),
-            status_text=str(result.get("statusText", 'STATUS TEXT NOT AVAILABLE')),
+            status_text=str(result.get("statusText", "STATUS TEXT NOT AVAILABLE")),
             redirected=bool(result.get("redirected", False)),
             type=result.get("type", False),
             duration=duration,

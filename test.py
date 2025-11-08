@@ -13,8 +13,8 @@ async def main():
         
         #pprint(await browser.fingerprint())
         ctx = await browser.new_context()
-        pprint(await ctx.fingerprint())
-        breakpoint()
+        #pprint(await ctx.fingerprint())
+        #breakpoint()
         page = await ctx.new_page()
 
         sniffer = HeaderAnomalySniffer(
@@ -63,6 +63,10 @@ async def main():
         )
 
         pprint(result.json()[0].keys())
+
+        await result.render()
+
+        time.sleep(9999)
 
         await browser.close()
 

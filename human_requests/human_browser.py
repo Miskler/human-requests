@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from typing import Any, List, Literal, cast, override
+from typing import Any, List, cast, override
 
 from playwright.async_api import Browser
-from playwright.async_api import Request as PWRequest
-from playwright.async_api import Route
 
-from .fingerprint import Fingerprint
 from .human_context import HumanContext
 from .human_page import HumanPage
 

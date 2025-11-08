@@ -243,7 +243,9 @@ class Fingerprint:
         # 3. Fallback to UA
         if isinstance(self.uach.mobile, bool):
             self.device_type = "mobile" if self.uach.mobile else "desktop"
-        elif self.touch_support and (self.touch_support.get("maxTouchPoints", 0) > 0 or self.touch_support.get("touchEvent")):
+        elif self.touch_support and (
+            self.touch_support.get("maxTouchPoints", 0) > 0 or self.touch_support.get("touchEvent")
+        ):
             # Если touch и маленький экран — mobile, иначе tablet
             screen_w = (self.screen or {}).get("width", 0)
             self.device_type = "tablet" if screen_w > 768 else "mobile"
@@ -253,7 +255,10 @@ class Fingerprint:
         # движок — только из UA (UACH его не даёт), но можно доработать по UACH.brands
         self.engine = self.ua.engine
         if not self.engine and self.uach.primary_brand_name:
-            if "Chromium" in self.uach.primary_brand_name or "Chrome" in self.uach.primary_brand_name:
+            if (
+                "Chromium" in self.uach.primary_brand_name
+                or "Chrome" in self.uach.primary_brand_name
+            ):
                 self.engine = "Blink"
             elif "Firefox" in self.uach.primary_brand_name:
                 self.engine = "Gecko"

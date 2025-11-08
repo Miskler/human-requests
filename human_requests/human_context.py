@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, Literal
-import time
 
-from playwright.async_api import BrowserContext, Page
+from playwright.async_api import BrowserContext
 from playwright.async_api import Request as PWRequest
 from playwright.async_api import Route
 from pathlib import Path
@@ -33,7 +32,7 @@ class HumanContext(BrowserContext):
         self,
         *,
         wait_until: Literal["commit", "load", "domcontentloaded", "networkidle"] = "load",
-        origin: str = "https://example.com"
+        origin: str = "https://example.com",
     ) -> Fingerprint:
         """
         Collect a normalized snapshot of the current browser **fingerprint** as seen by
@@ -82,11 +81,13 @@ class HumanContext(BrowserContext):
         HTML_PATH = Path(__file__).parent / "fingerprint" / "fingerprint_gen.html"
         _HTML_FINGERPRINT = HTML_PATH.read_text(encoding="utf-8")
         headers = {}
+
         async def handler(route: Route, _req: PWRequest) -> None:
             headers.update(_req.headers)
             await route.fulfill(
                 status=200, content_type="text/html; charset=utf-8", body=_HTML_FINGERPRINT
             )
+
         ctx: HumanContext = self
         page = await ctx.new_page()
         await page.route(f"{origin}/**", handler)

@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass
 from time import time
-from typing import TYPE_CHECKING, AsyncContextManager, Callable, Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 from .http import URL
 from .request import FetchRequest
@@ -33,8 +33,10 @@ class FetchResponse:
     """The status code of the response."""
 
     status_text: str
+    """Человеко-читаемое представление status_code"""
 
     redirected: bool
+    """Был ли ответ сформировапн в следствии редиректа"""
 
     type: Literal["basic", "cors", "error", "opaque", "opaqueredirect"]
 
@@ -43,8 +45,6 @@ class FetchResponse:
 
     end_time: float
     """Current time in seconds since the Epoch."""
-
-    _render_callable: Optional[Callable[..., AsyncContextManager["HumanPage"]]] = None
 
     @property
     def text(self) -> str:
