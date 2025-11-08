@@ -40,6 +40,36 @@ def _primary_brand(brands: Optional[BrandList]) -> Optional[Brand]:
     return next((b for b in brands if "Not=A?Brand" not in (b.get("brand") or "")), brands[0])
 
 
+# ---------- Новые вложенные датаклассы ----------
+@dataclass
+class Screen:
+    width: Optional[int] = None
+    height: Optional[int] = None
+    availWidth: Optional[int] = None
+    availHeight: Optional[int] = None
+    colorDepth: Optional[int] = None
+    pixelDepth: Optional[int] = None
+
+
+@dataclass
+class WindowDetails:
+    innerWidth: Optional[int] = None
+    innerHeight: Optional[int] = None
+    devicePixelRatio: Optional[float] = None
+
+
+@dataclass
+class TouchSupport:
+    maxTouchPoints: int = 0
+    touchEvent: Optional[bool] = None
+
+
+@dataclass
+class Battery:
+    level: Optional[float] = None
+    charging: Optional[bool] = None
+
+
 # ---------- UserAgent ----------
 @dataclass
 class UserAgent:
@@ -161,6 +191,23 @@ class Fingerprint:
     languages: Optional[List[str]] = None
     timezone: Optional[str] = None
 
+    # новые сырые входы из JS
+    screen: Optional[Dict[str, Any]] = None
+    window: Optional[Dict[str, Any]] = None
+    hardware_concurrency: Optional[int] = None
+    device_memory: Optional[float] = None
+    cookies_enabled: Optional[bool] = None
+    local_storage: Optional[bool] = None
+    session_storage: Optional[bool] = None
+    do_not_track: Optional[str] = None
+    touch_support: Optional[Dict[str, Any]] = None
+    orientation: Optional[str] = None
+    battery: Optional[Dict[str, Any]] = None
+    canvas_fingerprint: Optional[str] = None
+    webgl_fingerprint: Optional[str] = None
+    audio_fingerprint: Optional[str] = None
+    fonts: Optional[List[str]] = None
+
     # итоговые поля (UACH имеет приоритет, затем UA)
     browser_name: Optional[str] = field(default=None, init=False)
     browser_version: Optional[str] = field(default=None, init=False)
@@ -168,6 +215,12 @@ class Fingerprint:
     os_version: Optional[str] = field(default=None, init=False)
     device_type: Optional[str] = field(default=None, init=False)
     engine: Optional[str] = field(default=None, init=False)
+
+    # структурированные новые
+    screen_details: Optional[Screen] = field(default=None, init=False)
+    window_details: Optional[WindowDetails] = field(default=None, init=False)
+    touch_support_details: Optional[TouchSupport] = field(default=None, init=False)
+    battery_details: Optional[Battery] = field(default=None, init=False)
 
     uach: Optional[UserAgentClientHints] = field(default=None, init=False)
     ua: Optional[UserAgent] = field(default=None, init=False)
@@ -184,11 +237,35 @@ class Fingerprint:
         self.os_name = _coalesce(self.uach.platform, self.ua.os_name)
         self.os_version = _coalesce(self.uach.platform_version, self.ua.os_version)
 
-        # тип устройства: UACH.mobile (bool) → 'mobile'/'desktop', иначе из UA
+        # тип устройства: улучшенная логика
+        # 1. UACH.mobile
+        # 2. Touch support / screen size heuristics
+        # 3. Fallback to UA
         if isinstance(self.uach.mobile, bool):
             self.device_type = "mobile" if self.uach.mobile else "desktop"
+        elif self.touch_support and (self.touch_support.get("maxTouchPoints", 0) > 0 or self.touch_support.get("touchEvent")):
+            # Если touch и маленький экран — mobile, иначе tablet
+            screen_w = (self.screen or {}).get("width", 0)
+            self.device_type = "tablet" if screen_w > 768 else "mobile"
         else:
             self.device_type = self.ua.device_type
 
-        # движок — только из UA (UACH его не даёт)
+        # движок — только из UA (UACH его не даёт), но можно доработать по UACH.brands
         self.engine = self.ua.engine
+        if not self.engine and self.uach.primary_brand_name:
+            if "Chromium" in self.uach.primary_brand_name or "Chrome" in self.uach.primary_brand_name:
+                self.engine = "Blink"
+            elif "Firefox" in self.uach.primary_brand_name:
+                self.engine = "Gecko"
+            elif "Safari" in self.uach.primary_brand_name:
+                self.engine = "WebKit"
+
+        # Преобразование dict в датаклассы для новых полей
+        if self.screen:
+            self.screen_details = Screen(**self.screen)
+        if self.window:
+            self.window_details = WindowDetails(**self.window)
+        if self.touch_support:
+            self.touch_support_details = TouchSupport(**self.touch_support)
+        if self.battery:
+            self.battery_details = Battery(**self.battery)

@@ -1,86 +1,198 @@
 <!doctype html>
 <html lang="ru">
-    <head>
-        <meta charset="utf-8" />
-        <title>Fingerprint collector</title>
-        <meta name="viewport" content="width=device-width,initial-scale=1" />
-        <style>
-            html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial}
-            .box{height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#444}
-            .spinner{width:40px;height:40px;border:4px solid #ddd;border-top-color:#444;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px}
-            @keyframes spin{to{transform:rotate(360deg)}}
-            pre{max-width:90vw;max-height:40vh;overflow:auto;background:#f7f7f7;padding:10px;border-radius:6px;border:1px solid #eee}
-        </style>
-    </head>
-    <body>
-        <div class="box">
-            <div class="spinner" aria-hidden="true"></div>
-            <div>Collect browser fingerprint...</div>
-            <pre id="out" aria-hidden="true">waiting…</pre>
-        </div>
+<head>
+<meta charset="utf-8" />
+<title>Fingerprint collector</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial}
+.box{height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#444}
+.spinner{width:40px;height:40px;border:4px solid #ddd;border-top-color:#444;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+pre{max-width:90vw;max-height:40vh;overflow:auto;background:#f7f7f7;padding:10px;border-radius:6px;border:1px solid #eee}
+</style>
+</head>
+<body>
+<div class="box">
+<div class="spinner" aria-hidden="true"></div>
+<div>Collect browser fingerprint...</div>
+<pre id="out" aria-hidden="true">waiting…</pre>
+</div>
+<script>
+(async function collectAndPersist() {
+    try {
+        console.log('Starting fingerprint collection...');
+        const fp = {
+            user_agent: navigator.userAgent || null,
+            user_agent_client_hints: null,
+            platform: navigator.platform || null,
+            vendor: navigator.vendor || null,
+            languages: (navigator.languages && navigator.languages.slice()) || (navigator.language ? [navigator.language] : null),
+            timezone: (Intl && Intl.DateTimeFormat && Intl.DateTimeFormat().resolvedOptions && Intl.DateTimeFormat().resolvedOptions().timeZone) || null,
 
-        <script>
-        (async function collectAndPersist() {
+            screen: {
+                width: screen.width || null,
+                height: screen.height || null,
+                availWidth: screen.availWidth || null,
+                availHeight: screen.availHeight || null,
+                colorDepth: screen.colorDepth || null,
+                pixelDepth: screen.pixelDepth || null,
+            },
+            window: {
+                innerWidth: window.innerWidth || null,
+                innerHeight: window.innerHeight || null,
+                devicePixelRatio: window.devicePixelRatio || null,
+            },
+
+            hardware_concurrency: navigator.hardwareConcurrency || null,
+            device_memory: navigator.deviceMemory || null,
+
+            cookies_enabled: navigator.cookieEnabled || null,
+            local_storage: !!window.localStorage || null,
+            session_storage: !!window.sessionStorage || null,
+
+            do_not_track: navigator.doNotTrack || null,
+
+            touch_support: {
+                maxTouchPoints: navigator.maxTouchPoints || 0,
+                touchEvent: 'ontouchstart' in window || null,
+            },
+            orientation: screen.orientation ? screen.orientation.type : null,
+
+            // Убрал battery
+
+            canvas_fingerprint: null,
+            webgl_fingerprint: null,
+            audio_fingerprint: null,
+            fonts: null,
+        };
+
+        // UACH
+        if (navigator.userAgentData) {
+            let low = null;
             try {
-            const fp = {
-                user_agent: navigator.userAgent || null,
-
-                // ↓ ровно после user_agent — UACH (если поддерживается)
-                user_agent_client_hints: null,
-
-                platform: navigator.platform || null,
-                vendor: navigator.vendor || null,
-                languages:
-                (navigator.languages && navigator.languages.slice()) ||
-                (navigator.language ? [navigator.language] : null),
-                timezone:
-                (Intl && Intl.DateTimeFormat && Intl.DateTimeFormat().resolvedOptions &&
-                    Intl.DateTimeFormat().resolvedOptions().timeZone) || null,
-            };
-
-            // UACH без парсинга: low-entropy + high-entropy, если доступны
-            if (navigator.userAgentData) {
-                let low = null;
-                try {
                 low = {
                     brands: navigator.userAgentData.brands || navigator.userAgentData.uaList || null,
-                    mobile: (typeof navigator.userAgentData.mobile === "boolean")
-                    ? navigator.userAgentData.mobile : null,
+                    mobile: (typeof navigator.userAgentData.mobile === "boolean") ? navigator.userAgentData.mobile : null,
                 };
-                } catch (_) {}
-
-                let high = null;
-                try {
+            } catch (_) {}
+            let high = null;
+            try {
                 if (navigator.userAgentData.getHighEntropyValues) {
                     high = await navigator.userAgentData.getHighEntropyValues([
-                    "architecture",
-                    "model",
-                    "platform",
-                    "platformVersion",
-                    "uaFullVersion",
-                    // при желании можно добавить "bitness", "fullVersionList" (если поддерживаются)
+                        "architecture", "model", "platform", "platformVersion", "uaFullVersion",
                     ]);
                 }
-                } catch (_) {}
+            } catch (_) {}
+            fp.user_agent_client_hints = { low_entropy: low, high_entropy: high };
+        } else {
+            fp.user_agent_client_hints = { supported: false };
+        }
+        console.log('UACH collected');
 
-                fp.user_agent_client_hints = { low_entropy: low, high_entropy: high };
-            } else {
-                fp.user_agent_client_hints = { supported: false };
+        // Canvas
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 200;
+            canvas.height = 100;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#f60';
+            ctx.fillRect(10, 10, 180, 80);
+            ctx.fillStyle = '#069';
+            ctx.font = '16pt no-real-font-123';
+            ctx.fillText('🦄🌈', 20, 50);
+            fp.canvas_fingerprint = canvas.toDataURL(); // Raw dataURL вместо hash
+            console.log('Canvas collected');
+        } catch (_) {}
+
+        // WebGL
+        try {
+            const canvas = document.createElement('canvas');
+            const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+            if (gl) {
+                const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                const vendor = debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR);
+                const renderer = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+                gl.clearColor(0.0, 0.0, 0.0, 1.0);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+                const data = canvas.toDataURL();
+                fp.webgl_fingerprint = `${vendor}|${renderer}|${data}`; // Raw вместо hash
+                console.log('WebGL collected');
             }
+        } catch (_) {}
 
-            // Сохраняем в localStorage
-            localStorage.setItem("fingerprint", JSON.stringify(fp));
-
-            // Для дебага на странице
-            const out = document.getElementById("out");
-            if (out) out.textContent = JSON.stringify(fp, null, 2);
-
-            // В window — для прямого чтения
-            window.__FINGERPRINT__ = fp;
-            } catch (err) {
-            try { localStorage.setItem("fingerprint", JSON.stringify({ error: String(err) })); } catch(_) {}
+        // Audio
+        try {
+            const AudioContext = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+            if (AudioContext) {
+                const context = new AudioContext(1, 44100, 44100);
+                const oscillator = context.createOscillator();
+                oscillator.type = 'triangle';
+                oscillator.frequency.value = 10000;
+                const compressor = context.createDynamicsCompressor();
+                compressor.threshold.value = -50;
+                compressor.knee.value = 40;
+                compressor.ratio.value = 12;
+                compressor.attack.value = 0;
+                compressor.release.value = 0.25;
+                oscillator.connect(compressor);
+                compressor.connect(context.destination);
+                oscillator.start(0);
+                const buffer = await context.startRendering(); // Исправление: startRendering() с await
+                const channelData = buffer.getChannelData(0).slice(4500, 5000);
+                fp.audio_fingerprint = channelData.reduce((acc, val) => acc + Math.abs(val), 0).toString(); // Сумма для уникальности, без hash
+                await context.close();
+                console.log('Audio collected');
             }
-        })();
-        </script>
-    </body>
+        } catch (e) {
+            console.error('Audio error:', e);
+        }
+
+        // Fonts
+        try {
+            const fontsList = ['serif', 'sans-serif', 'monospace', 'Arial', 'Courier New', 'Times New Roman', 'Georgia', 'Verdana', 'Comic Sans MS', 'Impact'];
+            const detected = [];
+            const testEl = document.createElement('span');
+            testEl.style.position = 'absolute';
+            testEl.style.top = '-9999px';
+            testEl.style.fontSize = '72px';
+            testEl.innerHTML = 'mmmmmmmmmmlli';
+            document.body.appendChild(testEl);
+            const defaultWidth = {};
+            ['serif', 'sans-serif', 'monospace'].forEach(base => {
+                testEl.style.fontFamily = base;
+                defaultWidth[base] = testEl.offsetWidth;
+            });
+            fontsList.forEach(font => {
+                testEl.style.fontFamily = `${font}, serif`;
+                const wSerif = testEl.offsetWidth;
+                testEl.style.fontFamily = `${font}, sans-serif`;
+                const wSans = testEl.offsetWidth;
+                testEl.style.fontFamily = `${font}, monospace`;
+                const wMono = testEl.offsetWidth;
+                if (wSerif !== defaultWidth['serif'] || wSans !== defaultWidth['sans-serif'] || wMono !== defaultWidth['monospace']) {
+                    detected.push(font);
+                }
+            });
+            document.body.removeChild(testEl);
+            fp.fonts = detected;
+            console.log('Fonts collected');
+        } catch (_) {}
+
+        // Сохранение
+        localStorage.setItem("fingerprint", JSON.stringify(fp));
+        console.log('Fingerprint saved to localStorage');
+
+        // Отображение
+        const out = document.getElementById("out");
+        if (out) out.textContent = JSON.stringify(fp, null, 2);
+
+        window.__FINGERPRINT__ = fp;
+    } catch (err) {
+        console.error('Global error:', err);
+        try { localStorage.setItem("fingerprint", JSON.stringify({ error: String(err) })); } catch(_) {}
+    }
+})();
+</script>
+</body>
 </html>
