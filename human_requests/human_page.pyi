@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable, List, Literal, Optional, Dict
+from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional
 
 from playwright.async_api import Cookie, Page
 from playwright.async_api import Response as PWResponse

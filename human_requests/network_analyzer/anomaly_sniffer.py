@@ -155,7 +155,11 @@ class HeaderAnomalySniffer:
             pat: Pattern[str] = (
                 re.compile(url_filter) if isinstance(url_filter, str) else url_filter
             )
-            self._url_filter_fn = lambda s, _p=pat: bool(_p.search(s))
+
+            def _url_filter(s: str, _p: Pattern[str] = pat) -> bool:
+                return bool(_p.search(s))
+
+            self._url_filter_fn = _url_filter
 
         self._ctx: Optional[BrowserContext] = None
         self._started = False
@@ -165,8 +169,8 @@ class HeaderAnomalySniffer:
         self._resp_map: Dict[str, Dict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
 
         # ссылки на колбэки
-        self._req_cb = None
-        self._resp_cb = None
+        self._req_cb: Optional[Callable[[Request], None]] = None
+        self._resp_cb: Optional[Callable[[Response], None]] = None
 
         # пул задач
         self._tasks: Set[asyncio.Task] = set()
@@ -190,7 +194,7 @@ class HeaderAnomalySniffer:
                     if (
                         not req.is_navigation_request()
                         or req.resource_type != "document"
-                        or req.frame.parent is not None
+                        or req.frame.parent_frame is not None
                     ):
                         return
                 except Exception:
@@ -208,7 +212,7 @@ class HeaderAnomalySniffer:
                     if (
                         not rq.is_navigation_request()
                         or rq.resource_type != "document"
-                        or rq.frame.parent is not None
+                        or rq.frame.parent_frame is not None
                     ):
                         return
                 except Exception:
@@ -217,8 +221,8 @@ class HeaderAnomalySniffer:
             self._tasks.add(t)
             t.add_done_callback(self._tasks.discard)
 
-        self._req_cb = on_req
-        self._resp_cb = on_resp
+        self._req_cb = None
+        self._resp_cb = None
 
         ctx.on("request", on_req)
         ctx.on("response", on_resp)
@@ -335,7 +339,7 @@ class HeaderAnomalySniffer:
         req_union = self._union_req_headers()
         resp_union = self._union_resp_headers()
         for t in tasks:
-            need = set(t.headers)
+            need = set(t.headers or [])
             if t.source is WaitSource.REQUEST:
                 have = req_union
             elif t.source is WaitSource.RESPONSE:

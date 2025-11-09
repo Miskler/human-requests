@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import json
-from typing import Literal
+from pathlib import Path
+from typing import Any, Literal
 
 from playwright.async_api import BrowserContext
 from playwright.async_api import Request as PWRequest
 from playwright.async_api import Route
-from pathlib import Path
 
 from .fingerprint import Fingerprint
 from .human_page import HumanPage
-
 
 # ---- tiny helper to avoid repeating "get-or-create" for page wrappers ----
 
@@ -127,7 +126,7 @@ class HumanContext(BrowserContext):
         )
 
     @property
-    def pages(self) -> list["HumanPage"]:
+    def pages(self) -> list["HumanPage"]:  # type: ignore[override]
         return [HumanPage.replace(p) for p in super().pages]
 
     async def new_page(self) -> "HumanPage":
@@ -136,7 +135,7 @@ class HumanContext(BrowserContext):
 
     # ---------- new funcs ----------
 
-    async def local_storage(self, **kwargs) -> dict[str, dict[str, str]]:
+    async def local_storage(self, **kwargs: Any) -> dict[str, dict[str, str]]:
         ls = await self.storage_state(**kwargs)
         return {
             o["origin"]: {e["name"]: e["value"] for e in o.get("localStorage", [])}

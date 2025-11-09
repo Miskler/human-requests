@@ -33,7 +33,7 @@ class HumanBrowser(Browser):
 
     @property
     @override
-    def contexts(self) -> List["HumanContext"]:
+    def contexts(self) -> List["HumanContext"]:  # type: ignore[override]
         ctxs = super().contexts
         for c in ctxs:
             HumanContext.replace(c)
