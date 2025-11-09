@@ -78,7 +78,8 @@ class HumanPage(Page):
         wait_until : {"commit", "domcontentloaded", "load", "networkidle"} | None, optional
             When to consider the navigation successful (forwarded to Playwright).
         referer : str | None, optional
-            Per-request `Referer` header (overrides headers set via `page.set_extra_http_headers()`).
+            Per-request `Referer` header
+            (overrides headers set via `page.set_extra_http_headers()`).
         **kwargs : Any
             Any additional keyword arguments are forwarded to Playwright's `Page.goto`.
 
@@ -211,7 +212,8 @@ class HumanPage(Page):
             if on_retry:
                 await on_retry()
 
-        # НИЧЕГО не прячем: если goto упадёт, а затем ещё и unroute упадёт — поднимем обе ошибки как группу
+        # НИЧЕГО не прячем: если goto упадёт, а затем ещё и unroute упадёт
+        # — поднимем обе ошибки как группу
         nav_exc: Exception | None = None
         res: Optional[PWResponse] = None
         try:
@@ -292,7 +294,8 @@ class HumanPage(Page):
         b64 = result.get("bodyB64")
         raw = base64.b64decode(b64) if isinstance(b64, str) else b""
 
-        # Нормализуем заголовки: если raw есть, уберём transport-атрибуты, чтобы не путать потребителя
+        # Нормализуем заголовки: если raw есть,
+        # уберём transport-атрибуты, чтобы не путать потребителя
         resp_headers = {k.lower(): v for k, v in (result.get("headers") or {}).items()}
         if raw:
             resp_headers.pop("content-encoding", None)
@@ -364,7 +367,17 @@ class HumanPage(Page):
 
         Returns
         -------
-        List[{name: str, value: str, domain: str, path: str, expires: float, httpOnly: bool, secure: bool, sameSite: Union["Lax", "None", "Strict"], partitionKey: Union[str, None]}]
+        List[{
+            name: str,
+            value: str,
+            domain: str,
+            path: str,
+            expires: float,
+            httpOnly: bool,
+            secure: bool,
+            sameSite: Union["Lax", "None", "Strict"],
+            partitionKey: Union[str, None]
+        }]
         """
         return await self.context.cookies([self.url])
 

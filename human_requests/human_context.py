@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from playwright.async_api import BrowserContext
 from playwright.async_api import Request as PWRequest
@@ -10,9 +10,6 @@ from pathlib import Path
 
 from .fingerprint import Fingerprint
 from .human_page import HumanPage
-
-if TYPE_CHECKING:
-    from .human_page import HumanPage
 
 
 # ---- tiny helper to avoid repeating "get-or-create" for page wrappers ----
@@ -40,8 +37,10 @@ class HumanContext(BrowserContext):
         The snapshot aggregates:
         - **UA string**: `user_agent` (mirrors `headers["user-agent"]`)
         - **User-Agent Client Hints (UA-CH)**:
-            - `user_agent_client_hints.low_entropy` — values available without JS `getHighEntropyValues`
-            - `user_agent_client_hints.high_entropy` — values from `navigator.userAgentData.getHighEntropyValues(...)`
+            - `user_agent_client_hints.low_entropy` — values available
+               without JS `getHighEntropyValues`
+            - `user_agent_client_hints.high_entropy` — values from
+              `navigator.userAgentData.getHighEntropyValues(...)`
         - **Request headers** used for navigation/fetch (e.g. `sec-ch-ua`, `sec-ch-ua-platform`,
             `accept`, `upgrade-insecure-requests`, etc.) in `headers`
         - **Runtime details** inferred from JS/Navigator:
@@ -70,7 +69,8 @@ class HumanContext(BrowserContext):
         --------
         >>> fp = await browser.fingerprint()
         >>> fp.user_agent
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/140.0.7339.16 Safari/537.36'
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko)
+        HeadlessChrome/140.0.7339.16 Safari/537.36'
         >>> fp.headers["sec-ch-ua"]
         '"Chromium";v="140", "Not=A?Brand";v="24", "HeadlessChrome";v="140"'
         >>> fp.uach.platform, fp.uach.platform_version

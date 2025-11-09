@@ -22,9 +22,9 @@ class WaitSource(Enum):
 @dataclass(frozen=True)
 class WaitHeader:
     source: WaitSource = WaitSource.ALL  # источник: запросы/ответы/оба
-    headers: List[str] = None  # список имён заголовков (case-insensitive)
+    headers: Optional[List[str]] = None  # список имён заголовков (case-insensitive)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not self.headers:
             raise ValueError("WaitHeader.headers must be non-empty")
         object.__setattr__(self, "headers", [h.lower() for h in self.headers])
@@ -149,7 +149,7 @@ class HeaderAnomalySniffer:
         if url_filter is None:
             self._url_filter_fn = None
         elif callable(url_filter):
-            self._url_filter_fn = url_filter  # type: ignore[assignment]
+            self._url_filter_fn = url_filter
         else:
             # строка с регекспом или скомпилированный pattern
             pat: Pattern[str] = (

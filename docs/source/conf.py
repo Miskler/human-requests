@@ -31,8 +31,6 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.viewcode",
     "autoapi.extension",
-    "antibot_table",
-    "antibot_plot",
 ]
 
 # ──────────────────────────────────────────────────────────────────────────────

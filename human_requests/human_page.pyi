@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable, List, Literal, Optional, cast
-from urllib.parse import urlsplit
+from typing import Any, Awaitable, Callable, List, Literal, Optional, Dict
 
 from playwright.async_api import Cookie, Page
 from playwright.async_api import Response as PWResponse
-from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from typing_extensions import overload, override
 
 from .abstraction import FetchResponse, HttpMethod
