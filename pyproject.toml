@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "human-requests"
 dynamic = ["version"]
-description = "Playwright+curl_cffi traffic orchestrator"
+description = "Playwright wrapper обеспечивающий необходимый функционал для человеко-подобного парсинга сайтов"
 authors = [
     {name = "Miskler", email = "mail@miskler.ru"}
 ]
@@ -26,8 +26,6 @@ classifiers = [
 ]
 keywords = []
 dependencies = [
-    "curl-cffi",
-    "browserforge",
     "ua-parser[regex]",
     "playwright"
 ]
@@ -46,8 +44,6 @@ include = ["human_requests*"]
 
 [tool.setuptools.package-data]
 "human_requests" = ["py.typed", "fingerprint/*.html", "fetch.js"]
-
-
 
 [tool.black]
 line-length = 100
