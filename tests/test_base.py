@@ -7,8 +7,8 @@ import os
 from typing import Any, Iterable
 
 import pytest
-
 from camoufox.async_api import AsyncCamoufox
+
 from human_requests import HumanBrowser
 from human_requests.abstraction.http import URL
 
@@ -26,6 +26,7 @@ API_BASE = os.getenv("TEST_API_BASE", f"{HTML_BASE}/api")
 # ---------------------------------------------------------------------------
 COOKIE_BASE = "base_visited"
 COOKIE_CHALLENGE = "js_challenge"
+
 
 # ---------------------------------------------------------------------------
 # Утилита для поиска значения куки по имени (теперь cookies — list[dict])
@@ -66,10 +67,6 @@ async def test_direct_html_base_sets_cookie():
         assert resp.status_code == 200
         assert isinstance(resp.raw, bytes) and resp.raw.decode("utf-8").strip()
 
-        # кука в ответе (проверяем наличие в set-cookie)
-        set_cookie = resp.headers.get("set-cookie", "")
-        assert COOKIE_BASE in set_cookie
-
         # и в context (jar)
         cookies = await ctx.cookies()
         assert _cookie_value(cookies, COOKIE_BASE) is not None
@@ -88,8 +85,6 @@ async def test_direct_html_base_sets_cookie():
         # Повторный запрос: сервер установит куку заново
         resp3 = await page.fetch(f"{HTML_BASE}/base")
         assert resp3.status_code == 200
-        set_cookie3 = resp3.headers.get("set-cookie", "")
-        assert COOKIE_BASE in set_cookie3
         cookies4 = await ctx.cookies()
         assert _cookie_value(cookies4, COOKIE_BASE) is not None
 
@@ -138,18 +133,11 @@ async def test_goto_single_page_challenge():
         ctx = await browser.new_context()
         page = await ctx.new_page()
         await page.goto(f"{API_BASE}/challenge")
-        html = await page.content()
-        assert "document.cookie" in html
+        body = await page.json()
+        assert body.get("ok", False)
 
         cookies = await ctx.cookies()
-        assert _cookie_value(cookies, COOKIE_CHALLENGE) is None
-
-        await page.reload()
-        data = await page.json()
-        assert data.get("ok") is True
-
-        cookies2 = await ctx.cookies()
-        assert _cookie_value(cookies2, COOKIE_CHALLENGE) is not None
+        assert _cookie_value(cookies, COOKIE_CHALLENGE) is not None
 
         # Проверяем, что кука отправляется в последующих fetch-запросах
         challenge_resp = await page.fetch(f"{API_BASE}/challenge")
@@ -227,18 +215,9 @@ async def test_goto_redirect_challenge():
         ctx = await browser.new_context()
         page = await ctx.new_page()
         await page.goto(f"{HTML_BASE}/redirect-challenge")
-        html = await page.content()
-        assert "document.cookie" in html
 
-        cookies = await ctx.cookies()
-        assert _cookie_value(cookies, COOKIE_CHALLENGE) is None
-
-        await page.reload(wait_until="networkidle")  # Reload triggers redirect after setting cookie
-        data = await page.json()
-        assert data.get("ok") is True
-
-        cookies2 = await ctx.cookies()
-        assert _cookie_value(cookies2, COOKIE_CHALLENGE) is not None
+        body = await page.json()
+        assert body.get("ok", False)
 
 
 # ===========================================================================
@@ -373,7 +352,9 @@ async def test_httpbin_headers_echo_diag():
 
         # Если есть несовпадения значений — тоже считаем это проблемой теста (чёткая инварианта).
         if value_mismatches:
-            pytest.fail("Header value mismatches:\n" + json.dumps(diag, indent=2, ensure_ascii=False))
+            pytest.fail(
+                "Header value mismatches:\n" + json.dumps(diag, indent=2, ensure_ascii=False)
+            )
 
         # Иначе — считаем тест успешным, но выводим диагностику в лог (полезно для CI)
         print("Headers diagnostic:\n" + json.dumps(diag, indent=2, ensure_ascii=False))

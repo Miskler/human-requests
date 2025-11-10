@@ -6,11 +6,11 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Literal, Optional, cast
 from urllib.parse import urlsplit
-from selectolax.parser import HTMLParser
 
 from playwright.async_api import Cookie, Page
 from playwright.async_api import Response as PWResponse
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+from selectolax.parser import HTMLParser
 from typing_extensions import override
 
 from .abstraction.http import URL, HttpMethod
@@ -375,14 +375,17 @@ class HumanPage(Page):
         )
 
     async def json(self) -> list | dict:
-        """Если контент страницы это json - парсит (браузер всегда оборачивает его в body->pre), сереализует и выдает его."""
+        """
+        Если контент страницы это json - парсит (браузер всегда оборачивает его в body->pre),
+        сереализует и выдает его.
+        """
         body = await self.content()
         tree = HTMLParser(body)
 
-        node = tree.css_first('body > pre')  # точный селектор "body > pre"
+        node = tree.css_first("body > pre")  # точный селектор "body > pre"
         if node is None:
             raise RuntimeError("Содержимое страницы не является json-контейнером")
-        
+
         return json.loads(node.text())
 
     def __repr__(self) -> str:
