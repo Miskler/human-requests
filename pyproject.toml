@@ -27,7 +27,8 @@ classifiers = [
 keywords = []
 dependencies = [
     "ua-parser[regex]",
-    "playwright"
+    "playwright",
+    "selectolax"
 ]
 
 [project.urls]

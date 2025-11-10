@@ -1,5 +1,6 @@
 playwright
 ua-parser[regex]
+selectolax
 
 pytest
 pytest-asyncio

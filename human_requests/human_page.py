@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Literal, Optional, cast
 from urllib.parse import urlsplit
+from selectolax.parser import HTMLParser
 
 from playwright.async_api import Cookie, Page
 from playwright.async_api import Response as PWResponse
@@ -327,34 +328,6 @@ class HumanPage(Page):
         )
         return resp_model
 
-    async def wait_for_request(
-        self,
-        predicate: Callable[[Any], bool],
-        *,
-        timeout: Optional[float] = None,
-        **kwargs: Any,
-    ) -> Any:
-        """
-        Wait for a request event to be emitted.
-        """
-        return await self.wait_for_event(
-            event="request", predicate=predicate, timeout=timeout, **kwargs
-        )
-
-    async def wait_for_response(
-        self,
-        predicate: Callable[[Any], bool],
-        *,
-        timeout: Optional[float] = None,
-        **kwargs: Any,
-    ) -> Any:
-        """
-        Wait for a response event to be emitted.
-        """
-        return await self.wait_for_event(
-            event="response", predicate=predicate, timeout=timeout, **kwargs
-        )
-
     @property
     def origin(self) -> str:
         url_parts = urlsplit(self.url)
@@ -400,6 +373,17 @@ class HumanPage(Page):
             """,
             "sessionStorage",
         )
+
+    async def json(self) -> list | dict:
+        """Если контент страницы это json - парсит (браузер всегда оборачивает его в body->pre), сереализует и выдает его."""
+        body = await self.content()
+        tree = HTMLParser(body)
+
+        node = tree.css_first('body > pre')  # точный селектор "body > pre"
+        if node is None:
+            raise RuntimeError("Содержимое страницы не является json-контейнером")
+        
+        return json.loads(node.text())
 
     def __repr__(self) -> str:
         return f"<HumanPage wrapping {super().__repr__()!r}>"

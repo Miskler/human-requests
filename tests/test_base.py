@@ -10,7 +10,7 @@ import pytest
 
 from camoufox.async_api import AsyncCamoufox
 from human_requests import HumanBrowser
-from human_requests.abstraction.http import URL, HttpMethod
+from human_requests.abstraction.http import URL
 
 # Hook for easy browser switching (change this to another browser class if needed)
 DefaultBrowser = AsyncCamoufox
@@ -18,7 +18,7 @@ DefaultBrowser = AsyncCamoufox
 # ---------------------------------------------------------------------------
 # Базовые адреса берём из ENV, чтобы не хардкодить инфраструктуру
 # ---------------------------------------------------------------------------
-HTML_BASE = os.getenv("TEST_HTML_BASE", "http://localhost:8000")
+HTML_BASE = os.getenv("TEST_HTML_BASE", "http://localhost:8980")
 API_BASE = os.getenv("TEST_API_BASE", f"{HTML_BASE}/api")
 
 # ---------------------------------------------------------------------------
@@ -46,9 +46,10 @@ async def test_direct_api_base_returns_json():
         browser = HumanBrowser.replace(b)
         ctx = await browser.new_context()
         page = await ctx.new_page()
+        await page.goto(API_BASE)
         resp = await page.fetch(f"{API_BASE}/base")
         assert resp.status_code == 200
-        json.loads(resp.raw)  # тело валидный JSON (loads принимает bytes)
+        resp.json()  # тело валидный JSON (loads принимает bytes)
 
 
 # ===========================================================================
@@ -60,6 +61,7 @@ async def test_direct_html_base_sets_cookie():
         browser = HumanBrowser.replace(b)
         ctx = await browser.new_context()
         page = await ctx.new_page()
+        await page.goto(API_BASE)
         resp = await page.fetch(f"{HTML_BASE}/base")
         assert resp.status_code == 200
         assert isinstance(resp.raw, bytes) and resp.raw.decode("utf-8").strip()
@@ -143,7 +145,7 @@ async def test_goto_single_page_challenge():
         assert _cookie_value(cookies, COOKIE_CHALLENGE) is None
 
         await page.reload()
-        data = json.loads(await page.content())
+        data = await page.json()
         assert data.get("ok") is True
 
         cookies2 = await ctx.cookies()
@@ -152,12 +154,12 @@ async def test_goto_single_page_challenge():
         # Проверяем, что кука отправляется в последующих fetch-запросах
         challenge_resp = await page.fetch(f"{API_BASE}/challenge")
         assert challenge_resp.status_code == 200
-        data_challenge = json.loads(challenge_resp.raw)
+        data_challenge = challenge_resp.json()
         assert data_challenge.get("ok") is True
 
         protected_resp = await page.fetch(f"{API_BASE}/protected")
         assert protected_resp.status_code == 200
-        json.loads(protected_resp.raw)
+        protected_resp.json()
 
         # Удаляем куку и убеждаемся, что она не отправляется
         await ctx.clear_cookies(name=COOKIE_CHALLENGE, domain=URL(HTML_BASE).domain)
@@ -181,6 +183,7 @@ async def test_direct_api_challenge_without_cookie():
         browser = HumanBrowser.replace(b)
         ctx = await browser.new_context()
         page = await ctx.new_page()
+        await page.goto(API_BASE)
         resp = await page.fetch(f"{API_BASE}/challenge")
         assert resp.status_code == 200
         body_str = resp.raw.decode("utf-8")
@@ -199,6 +202,7 @@ async def test_direct_api_challenge_sets_cookie_via_render():
         browser = HumanBrowser.replace(b)
         ctx = await browser.new_context()
         page = await ctx.new_page()
+        await page.goto(API_BASE)
         resp = await page.fetch(f"{API_BASE}/challenge")
         assert resp.status_code == 200
         body_str = resp.raw.decode("utf-8")
@@ -206,7 +210,7 @@ async def test_direct_api_challenge_sets_cookie_via_render():
 
         # Render the response (HTML with JS), wait for networkidle to allow reload
         await page.goto_render(resp, wait_until="networkidle")
-        data = json.loads(await page.content())
+        data = await page.json()
         assert data.get("ok") is True
 
         cookies = await ctx.cookies()
@@ -230,7 +234,7 @@ async def test_goto_redirect_challenge():
         assert _cookie_value(cookies, COOKIE_CHALLENGE) is None
 
         await page.reload(wait_until="networkidle")  # Reload triggers redirect after setting cookie
-        data = json.loads(await page.content())
+        data = await page.json()
         assert data.get("ok") is True
 
         cookies2 = await ctx.cookies()
@@ -246,13 +250,14 @@ async def test_direct_redirect_challenge_via_render():
         browser = HumanBrowser.replace(b)
         ctx = await browser.new_context()
         page = await ctx.new_page()
+        await page.goto(API_BASE)
         resp = await page.fetch(f"{HTML_BASE}/redirect-challenge")
         assert resp.status_code == 200
         body_str = resp.raw.decode("utf-8")
         assert "document.cookie" in body_str
 
         await page.goto_render(resp, wait_until="networkidle")  # Render and wait for redirect
-        data = json.loads(await page.content())
+        data = await page.json()
         assert data.get("ok") is True
 
         cookies = await ctx.cookies()
@@ -268,6 +273,7 @@ async def test_simple_redirect_without_cookie():
         browser = HumanBrowser.replace(b)
         ctx = await browser.new_context()
         page = await ctx.new_page()
+        await page.goto(API_BASE)
         resp = await page.fetch(f"{HTML_BASE}/redirect-base")
         assert resp.status_code == 200
 
@@ -275,7 +281,7 @@ async def test_simple_redirect_without_cookie():
         assert resp.request.url.full_url != resp.url.full_url
 
         # финальный ответ JSON
-        json.loads(resp.raw)
+        resp.json()
 
 
 DEFAULT_IGNORED_HEADERS = {
@@ -316,11 +322,12 @@ async def test_httpbin_headers_echo_diag():
         browser = HumanBrowser.replace(b)
         ctx = await browser.new_context()
         page = await ctx.new_page()
+        await page.goto(API_BASE)
         # direct запрос
         resp = await page.fetch(f"{HTML_BASE}/headers")
         assert resp.status_code == 200
 
-        body = json.loads(resp.raw.decode("utf-8"))
+        body = resp.json()
         echoed = {k.lower(): v for k, v in body["headers"].items()}
         raw = raw_list_to_dict(body.get("raw_headers", []))
         sent = {k.lower(): v for k, v in resp.request.headers.items()}

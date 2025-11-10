@@ -8,7 +8,7 @@ PYTEST      := $(VENV)/bin/pytest
 SERVER_DIR  ?= .
 APP         ?= app:app           # модуль:объект ASGI внутри SERVER_DIR
 HOST        ?= 127.0.0.1
-PORT        ?= 8000
+PORT        ?= 8980
 PID_FILE    ?= .server.pid
 
 # === Helpers ===
