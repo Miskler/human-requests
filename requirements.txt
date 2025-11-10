@@ -1,6 +1,7 @@
 playwright
 ua-parser[regex]
 selectolax
+camoufox
 
 pytest
 pytest-asyncio
