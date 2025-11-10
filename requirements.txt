@@ -1,11 +1,6 @@
 playwright
-camoufox[geoip]
-
-curl-cffi
-browserforge
 ua-parser[regex]
 
-selectolax
 pytest
 pytest-asyncio
 pytest-cov
