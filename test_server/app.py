@@ -118,8 +118,7 @@ async def headers_echo(request: Request):
     # Normalized headers (what frameworks usually surface)
     normalized = {k: v for k, v in request.headers.items()}
 
-    # Raw ASGI headers as received by the server (list of [name, value])
-    # request.scope['headers'] is list[tuple[bytes, bytes]]
+    # Raw ASGI headers as received by the server (list[tuple[bytes, bytes]])
     raw = []
     for name_b, val_b in request.scope.get("headers", []):
         try:

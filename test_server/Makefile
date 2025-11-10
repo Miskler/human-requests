@@ -18,7 +18,7 @@ help: ## Показать цели
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' Makefile | sort | sed 's/:.*##/: /'
 
 $(VENV)/bin/activate: ## Создать venv
-	python -m venv $(VENV)
+	python3 -m venv $(VENV)
 	@echo "venv created at $(VENV)"
 
 .PHONY: install
