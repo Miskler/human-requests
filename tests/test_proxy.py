@@ -122,8 +122,8 @@ def test_proxy_converter_full_matrix(protocol, host, port, auth, input_type):
     ), f"as_dict mismatch for {input_type} | proto={protocol} auth={auth}"
 
     assert proxy.as_str() == expected_str_full, f"as_str full mismatch for {input_type}"
-    assert proxy.as_str(include_auth=True) == expected_str_full, f"as_str(True) mismatch"
-    assert proxy.as_str(include_auth=False) == expected_str_noauth, f"as_str(False) mismatch"
+    assert proxy.as_str(include_auth=True) == expected_str_full, "as_str(True) mismatch"
+    assert proxy.as_str(include_auth=False) == expected_str_noauth, "as_str(False) mismatch"
 
     # round-trip: dict → str → dict
     new_proxy = Proxy(proxy.as_dict())

@@ -36,6 +36,7 @@ class HumanPage(Page):
 
     @staticmethod
     def replace(playwright_page: Page) -> HumanPage:
+        """Подменяет стандартный Playwright класс с сохранением содержимого."""
         from .human_context import HumanContext  # avoid circular import
 
         if isinstance(playwright_page.context, HumanContext) is False:
