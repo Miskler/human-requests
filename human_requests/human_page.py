@@ -266,7 +266,7 @@ class HumanPage(Page):
         js_body: Any = body
         if isinstance(body, (dict, list)):
             js_body = json.dumps(body, ensure_ascii=False)
-            declared_headers["content-type"] = "application/json"
+            js_headers["content-type"] = "application/json"
 
         start_t = time.perf_counter()
 
