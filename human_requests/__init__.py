@@ -4,4 +4,4 @@ from .human_page import HumanPage
 
 __all__ = ["HumanBrowser", "HumanContext", "HumanPage"]
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"

@@ -264,10 +264,9 @@ class HumanPage(Page):
         js_ref = referrer or declared_headers.get("referer")
 
         js_body: Any = body
-        if isinstance(body, (dict, list)) and declared_headers.get(
-            "content-type", ""
-        ).lower().startswith("application/json"):
+        if isinstance(body, (dict, list)):
             js_body = json.dumps(body, ensure_ascii=False)
+            declared_headers["content-type"] = "application/json"
 
         start_t = time.perf_counter()
 

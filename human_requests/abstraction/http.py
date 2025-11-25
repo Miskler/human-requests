@@ -151,12 +151,12 @@ class Proxy:
         self._username = proxy_dict.get("username")
         self._password = proxy_dict.get("password")
 
-    def as_dict(self) -> Dict[str, Any]:
+    def as_dict(self) -> Optional[Dict[str, Any]]:
         """
         Возвращает прокси в формате Playwright
         """
         if not self._server:
-            raise ValueError("Прокси не задан")
+            return None
 
         result: Dict[str, Any] = {"server": self._server}
         if self._username:
@@ -165,13 +165,13 @@ class Proxy:
             result["password"] = self._password
         return result
 
-    def as_str(self, include_auth: bool = True) -> str:
+    def as_str(self, include_auth: bool = True) -> Optional[str]:
         """
         Возвращает прокси в строковом формате.
         Если include_auth=False — без логина и пароля.
         """
         if not self._server:
-            raise ValueError("Прокси не задан")
+            return None
 
         parsed = urlparse(self._server)
         if not parsed.scheme or not parsed.hostname:
