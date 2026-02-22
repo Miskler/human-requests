@@ -16,6 +16,12 @@ AUTH_VARIANTS = [
     (None, "onlypass"),  # only password
 ]
 INPUT_TYPES = ["str_with_proto", "str_without_proto", "playwright_dict", "direct_kwargs"]
+ENV_PROXY_KEYS = ("https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY")
+
+
+def clear_proxy_env(monkeypatch):
+    for key in ENV_PROXY_KEYS:
+        monkeypatch.delenv(key, raising=False)
 
 
 def get_auth_id(auth):
@@ -135,3 +141,35 @@ def test_proxy_converter_full_matrix(protocol, host, port, auth, input_type):
 
     # Проверка __bool__
     assert bool(proxy) is True
+
+
+def test_proxy_from_env_prefers_https(monkeypatch):
+    clear_proxy_env(monkeypatch)
+    monkeypatch.setenv("http_proxy", "http://http-proxy.local:8080")
+    monkeypatch.setenv("HTTPS_PROXY", "https://secure-proxy.local:8443")
+    monkeypatch.setenv("all_proxy", "socks5://fallback-proxy.local:1080")
+
+    proxy = Proxy.from_env()
+
+    assert proxy.as_str(include_auth=False) == "https://secure-proxy.local:8443"
+    assert proxy.as_dict() == {"server": "https://secure-proxy.local:8443"}
+
+
+def test_proxy_from_env_skips_blank_values(monkeypatch):
+    clear_proxy_env(monkeypatch)
+    monkeypatch.setenv("https_proxy", "   ")
+    monkeypatch.setenv("HTTP_PROXY", "proxy.local:3128")
+
+    proxy = Proxy.from_env()
+
+    assert proxy.as_str(include_auth=False) == "http://proxy.local:3128"
+
+
+def test_proxy_from_env_returns_empty_proxy_when_env_missing(monkeypatch):
+    clear_proxy_env(monkeypatch)
+
+    proxy = Proxy.from_env()
+
+    assert bool(proxy) is False
+    assert proxy.as_dict() is None
+    assert proxy.as_str() is None

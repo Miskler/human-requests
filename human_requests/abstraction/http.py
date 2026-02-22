@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, Optional
@@ -82,6 +83,31 @@ class Proxy:
             'password': 'pass'
         }
     """
+
+    @staticmethod
+    def from_env() -> Proxy:
+        """
+        Создаёт Proxy из переменных окружения.
+
+        Приоритет:
+        1) https_proxy / HTTPS_PROXY
+        2) http_proxy / HTTP_PROXY
+        3) all_proxy / ALL_PROXY
+        """
+        env_keys = (
+            "https_proxy",
+            "HTTPS_PROXY",
+            "http_proxy",
+            "HTTP_PROXY",
+            "all_proxy",
+            "ALL_PROXY",
+        )
+
+        for key in env_keys:
+            value = os.getenv(key)
+            if value and value.strip():
+                return Proxy(value.strip())
+        return Proxy()
 
     def __init__(
         self,
