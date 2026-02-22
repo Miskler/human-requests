@@ -4,6 +4,7 @@ selectolax
 camoufox
 
 pytest
+anyio
 pytest-asyncio
 pytest-cov
 pytest-jsonschema-snapshot

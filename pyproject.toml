@@ -33,6 +33,7 @@ dependencies = [
 
 [project.optional-dependencies]
 autotest = [
+    "anyio",
     "pytest-jsonschema-snapshot",
     "pytest-subtests"
 ]
