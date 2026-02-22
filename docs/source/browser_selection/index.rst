@@ -1,4 +1,5 @@
 .. _browser_selection:
+
 Browser Selection Recommendations
 =================================
 

@@ -4,140 +4,117 @@ Quick Start
 Installation
 ------------
 
-Choose one of the options that best suits your requirements:
+Install the package and browser runtime:
 
 .. code-block:: bash
 
-    pip install human-requests[playwright]
-    playwright install
+    pip install human-requests
+    playwright install chromium
 
-Standard Playwright with a set of browsers (Chrome, Firefox, WebKit).
-Not recommended to use in a “bare” form.
-
-.. code-block:: bash
-
-    pip install human-requests[playwright-stealth]
-    playwright install
-
-Standard Playwright with a JS stealth patch that hides some automation signatures.
+If you prefer Camoufox, install it separately:
 
 .. code-block:: bash
 
-    pip install human-requests[camoufox]
+    pip install camoufox
     camoufox fetch
 
-Playwright browser based on Firefox. The main feature is signature spoofing,
-which allows sending more traffic and bypassing bans based on fingerprints.
 
-.. code-block:: bash
+Basic Usage
+-----------
 
-    pip install human-requests[patchright]
-    patchright install chromium
+``human-requests`` wraps Playwright objects in runtime with typed extensions.
+The standard entrypoint is:
 
-An alternative to playwright-stealth that attempts to achieve similar results
-without JS injections.  
-In my tests it performed poorly, essentially hiding only the WebDriver flag.
-
-.. code-block:: bash
-
-    pip install human-requests[all]
-
-You can install everything at once.
-
-
-Usage
------
-
-Example of reversing the website **5ka.ru**
-
-I chose this site because it was the reason I started developing this library.
-The point is that impersonation in hrequests is poor — or even absent (cannot say for sure).
-As a result, the site easily detected the bot.
+1. launch a Playwright browser;
+2. wrap it with :class:`~human_requests.human_browser.HumanBrowser`;
+3. create :class:`~human_requests.human_context.HumanContext` and :class:`~human_requests.human_page.HumanPage`.
 
 .. code-block:: python
 
-    from human_requests import Session
-    from human_requests.impersonation import ImpersonationConfig, Policy
-    from human_requests.abstraction.http import HttpMethod
     import asyncio
-    import json
+    from playwright.async_api import async_playwright
 
-    async def main():
-        # Session initialization
-        s = Session(headless=False,  # False is useful for debugging
-                    browser="camoufox",  # camoufox is best for large-scale requests, but may be less stable
-                    # For non-camoufox (it already supports this by default), hides some automation signatures
-                    # Recommended to enable for standard Playwright browsers
-                    playwright_stealth=False,
-                    spoof=ImpersonationConfig(
-                        policy=Policy.SYNC_WITH_BROWSER
-                    ))
-        
-        await s.start()
+    from human_requests import HumanBrowser
 
-        # Warm up the session (cookies + default local storage)
-        async with s.goto_page("https://5ka.ru/", wait_until="networkidle") as page:
-            await page.wait_for_selector(selector="next-route-announcer", state="attached")
 
-        # Parse the default store location
-        default_store_location = json.loads(s.local_storage["https://5ka.ru"]["DeliveryPanelStore"])
+    async def main() -> None:
+        async with async_playwright() as p:
+            raw_browser = await p.chromium.launch(headless=True)
+            browser = HumanBrowser.replace(raw_browser)
 
-        # Cookies are attached automatically
-        resp = await s.request(
-            HttpMethod.GET,  # Equivalent of "GET"
-            # Fetch the default store from local storage
-            f"https://5d.5ka.ru/api/catalog/v2/stores/{default_store_location['selectedAddress']['sapCode']}/categories?mode=delivery",
-            headers={  # Static headers, without them you’ll get a 400
-                "X-PLATFORM": "webapp",
-                # Device ID saved by site JS during warm-up
-                "X-DEVICE-ID": s.local_storage["https://5ka.ru"]["deviceId"],
-                "X-APP-VERSION": "0.1.1.dev"
-            }
-        )
+            ctx = await browser.new_context()
+            page = await ctx.new_page()
 
-        # If while parsing the response you encounter, for example:
-        # a JS challenge that must be solved to get the data,
-        # you can render the result directly in the browser (without a duplicate request).
-        # Advantage: no duplicate requests (less suspicious, saves rate limit).
+            await page.goto("https://example.com", wait_until="domcontentloaded")
+            print(page.url)
 
-        # async with resp.render() as p:
-        #     await p.wait_for_load_state("networkidle")
-        #     print(await p.content())
+            await browser.close()
 
-        # Don’t forget to close the session (in a `with` context it would close automatically)
-        await s.close()
-        
-        # Verify result
-        assert resp.status_code == 200
 
-        # Parse body
-        json_result = json.loads(resp.body)
+    asyncio.run(main())
 
-        # Process further as you wish
-        names = []
-        for element in json_result:
-            names.append(element["name"])
 
-        from pprint import pprint
-        pprint(names)
+HTTP from Page Context
+----------------------
 
-    if __name__ == "__main__":
-        asyncio.run(main())
+Use :py:meth:`~human_requests.human_page.HumanPage.fetch` to perform direct HTTP
+requests from the current page context and receive a
+:class:`~human_requests.abstraction.response.FetchResponse`.
 
-For more details, also see:
+.. code-block:: python
 
-* :class:`~human_requests.session.Session`
+    resp = await page.fetch("https://httpbin.org/json")
+    print(resp.status_code)
+    print(resp.json())
 
-* :class:`~human_requests.impersonation.ImpersonationConfig`
 
-* :class:`~human_requests.abstraction.request.Request`
+Render an Existing Response
+---------------------------
 
-* :class:`~human_requests.abstraction.response.Response`
+Use :py:meth:`~human_requests.human_page.HumanPage.goto_render` to render a
+previously fetched payload (for example, HTML with JS challenge logic) without
+making another upstream request.
 
-* :class:`~human_requests.abstraction.http.URL`
+.. code-block:: python
 
-* :class:`~human_requests.abstraction.http.HttpMethod`
+    challenge_resp = await page.fetch("https://example.com/challenge")
+    await page.goto_render(challenge_resp, wait_until="networkidle")
 
-For choosing the right browser, see :ref:`browser_selection`
 
-For API snapshot automation in pytest, see :doc:`autotest`.
+State Helpers
+-------------
+
+Cookies and storage helpers are available on both context and page levels:
+
+.. code-block:: python
+
+    cookies = await page.cookies()
+    ctx_storage = await ctx.local_storage()    # all origins in context
+    page_storage = await page.local_storage()  # current page origin only
+
+    print(len(cookies))
+    print(ctx_storage.keys())
+    print(page_storage)
+
+
+Fingerprint Snapshot
+--------------------
+
+:py:meth:`~human_requests.human_context.HumanContext.fingerprint` collects a
+normalized runtime/browser fingerprint snapshot.
+
+.. code-block:: python
+
+    fp = await ctx.fingerprint(origin="https://example.com")
+    print(fp.user_agent)
+    print(fp.browser_name, fp.browser_version)
+
+
+See Also
+--------
+
+* :doc:`autotest`
+* :ref:`browser_selection`
+* :class:`~human_requests.human_browser.HumanBrowser`
+* :class:`~human_requests.human_context.HumanContext`
+* :class:`~human_requests.human_page.HumanPage`

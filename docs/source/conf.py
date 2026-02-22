@@ -26,7 +26,6 @@ release   = __version__
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
-    "sphinx.ext.autodoc.typehints",
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
     "sphinx.ext.viewcode",
@@ -44,9 +43,9 @@ html_theme_options = {
     "dark_logo": "logo_night.png",
     "sidebar_hide_name": True,
 
-    "source_repository": "https://github.com/Miskler/network_manager",
+    "source_repository": "https://github.com/Miskler/human-requests",
     "source_branch": "main",
-    "source_directory": "docs/",
+    "source_directory": "docs/source/",
 }
 templates_path   = ["_templates"]
 

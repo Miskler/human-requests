@@ -1,19 +1,25 @@
 Interesting
 ===========
 
-:py:meth:`~human_requests.session.Session.goto_page` vs :py:meth:`~human_requests.session.Session.request`
----------------------------------------------------------------------------------------------------------
+:py:meth:`~human_requests.human_page.HumanPage.goto` vs
+:py:meth:`~human_requests.human_page.HumanPage.fetch`
+-------------------------------------------------------
 
-With the same end goal, :py:meth:`~human_requests.session.Session.request` performs at least 20% faster.
+If your goal is only to get payload data (JSON/HTML bytes),
+:py:meth:`~human_requests.human_page.HumanPage.fetch` is typically faster,
+because it does not trigger a full page navigation lifecycle.
 
-However, if after using :py:meth:`~human_requests.session.Session.request` you need to call :py:meth:`~human_requests.abstraction.response.Response.render`,
-the resulting speed will be the same as if you had used :py:meth:`~human_requests.session.Session.goto_page` from the start.
+If you later need to execute page JS for that same payload,
+use :py:meth:`~human_requests.human_page.HumanPage.goto_render` with the
+already fetched response. In that scenario, total time is close to starting
+with :py:meth:`~human_requests.human_page.HumanPage.goto`, but you still avoid
+a duplicate upstream request.
 
-This is because the very first request in hand is intercepted and substituted when the browser makes the call.
-In other words, the response is instantaneous since it does not actually go to the server.
+This is because the first navigation request is intercepted and fulfilled from
+local payload bytes.
 
 .. image:: _static/goto_vs_direct.svg
 
 .. note::
 
-    In this example, the server’s response time is static and equals 400 ms.
+    In this example, the server response time is static and equals 400 ms.

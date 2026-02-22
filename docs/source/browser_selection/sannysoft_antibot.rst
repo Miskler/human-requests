@@ -1,21 +1,21 @@
 .. _browser-antibot-report:
+
 Browser Anti-Bot Report
 =======================
 
-.. antibot-table:: ../../tests/sannysoft/browser_antibot_sannysoft.json
-   :title: Sannysoft Anti-bot Matrix
+Raw dataset for this report is stored in project CI artifacts and is not bundled
+into the source tree by default.
+
+This page intentionally keeps a lightweight default rendering pipeline.
+If you need matrix/plot visualization, use the project scripts and CI artifacts.
 
 Currently, stealth mode erases all "automatic places",
 so it makes sense to use camoufox only if you have massive traffic
 *(or you were banned by a fingerprint while writing a library >:) )*.
 
-The problem with `Broken Image Dimensions` is caused not by browsers, but by Response.render
-particularities; there are no errors with goto requests *(and it's not critical anyway)*
-
-
-.. antibot-speed-plot:: ../../tests/sannysoft/browser_antibot_sannysoft.json
-   :title: Browser Speed (avg ± min/max)
-   :outfile: _static/generated/antibot_speed
+The problem with `Broken Image Dimensions` is caused not by browsers, but by
+``HumanPage.goto_render`` particularities; there are no errors with direct
+``goto`` navigation *(and it's not critical anyway)*.
 
 Practical Recommendations
 -------------------------
@@ -44,4 +44,3 @@ Disclaimer
   environments).
 - The table and graph are built on the basis of the latest published report;
   values change as browsers and environments are updated.
-

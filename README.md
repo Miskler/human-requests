@@ -1,11 +1,10 @@
-
 <div align="center">
 
-# 🧰 Human Requests
+# Human Requests
 
 <img src="https://raw.githubusercontent.com/Miskler/human-requests/refs/heads/main/assets/logo.png" width="70%" alt="logo.webp" />
 
-*Asynchronous library for browser‑like HTTP scenarios with controlled offline rendering and two‑way state transfer.*
+*Asynchronous Playwright wrappers for browser-like HTTP scenarios, controlled render flow, and API autotest integration.*
 
 [![Tests](https://miskler.github.io/human-requests/tests-badge.svg)](https://miskler.github.io/human-requests/tests/tests-report.html)
 [![Coverage](https://miskler.github.io/human-requests/coverage.svg)](https://miskler.github.io/human-requests/coverage/)
@@ -17,124 +16,110 @@
 [![Discord](https://img.shields.io/discord/792572437292253224?label=Discord&labelColor=%232c2f33&color=%237289da)](https://discord.gg/UnJnGHNbBp)
 [![Telegram](https://img.shields.io/badge/Telegram-24A1DE)](https://t.me/miskler_dev)
 
-
-**[⭐ Star us on GitHub](https://github.com/Miskler/human-requests)** | **[📚 Read the Docs](https://miskler.github.io/human-requests/quick_start)** | **[🐛 Report a Bug](https://github.com/Miskler/human-requests/issues)**
-
-## ✨ Features
+**[Star us on GitHub](https://github.com/Miskler/human-requests)** | **[Read the Docs](https://miskler.github.io/human-requests/quick_start)** | **[Report a Bug](https://github.com/Miskler/human-requests/issues)**
 
 </div>
 
-- **HTTP by default.** Direct requests via `curl_cffi` in *impersonate* mode + real browser headers generation.
-- **Browser on demand.** Offline render of an already received response (no repeated HTTP) and JS execution.
-- **Unified state.** Two‑way transfer of **cookies** and **`localStorage`** between HTTP and the browser (storage_state ⇄ session).
-- **Async by design.** Native `asyncio` for predictable concurrency.
+## Features
 
+- Typed wrappers over Playwright primitives:
+  - `HumanBrowser`
+  - `HumanContext`
+  - `HumanPage`
+- `HumanPage.fetch(...)`: execute HTTP requests from page context and get structured `FetchResponse`.
+- `HumanPage.goto_render(...)`: render already available response payloads without duplicate upstream request.
+- Storage helpers:
+  - `HumanContext.local_storage()` for full context snapshot
+  - `HumanPage.local_storage()` for current page origin
+  - `HumanPage.cookies()` convenience alias
+- Fingerprint snapshot collection: `HumanContext.fingerprint(...)`.
+- Built-in pytest autotest plugin for API clients (`@autotest`, hooks, params, dependencies).
 
-<div align="center">
+## Installation
 
-## 🚀 Quick Start
-
-### Installation
-
-</div>
+Base package:
 
 ```bash
-pip install human-requests[playwright-stealth]
-playwright install
+pip install human-requests
+playwright install chromium
 ```
 
-<div align="center">
+Optional autotest addon dependencies:
 
-### Direct request *(pretend to be a browser)*
+```bash
+pip install human-requests[autotest] pytest pytest-anyio pytest-jsonschema-snapshot
+```
 
-</div>
+If you run with Camoufox, install it separately:
+
+```bash
+pip install camoufox
+camoufox fetch
+```
+
+## Quick Start
+
+### Wrap a Playwright browser
 
 ```python
 import asyncio
-from human_requests import Session, HttpMethod
+from playwright.async_api import async_playwright
 
-async def main():
-    async with Session(headless=True, browser="camoufox") as s:
-        resp = await s.request(HttpMethod.GET, "https://target.example/")
-        print(resp.status_code, len(resp.text))
+from human_requests import HumanBrowser
+
+
+async def main() -> None:
+    async with async_playwright() as p:
+        pw_browser = await p.chromium.launch(headless=True)
+        browser = HumanBrowser.replace(pw_browser)
+
+        ctx = await browser.new_context()
+        page = await ctx.new_page()
+
+        await page.goto("https://httpbin.org/html", wait_until="domcontentloaded")
+        print(page.url)
+
+        await browser.close()
+
 
 asyncio.run(main())
 ```
 
-<div align="center">
-
-### Render an already received response *(without another request)*
-
-</div>
+### Direct request in page context (`fetch`)
 
 ```python
-# resp — the result of an HTTP request
-async with resp.render(wait_until="networkidle") as page:
-    await page.wait_for_selector("#content")
-
-# after exiting:
-# - cookies and localStorage are synced back into the session
+resp = await page.fetch("https://httpbin.org/json")
+print(resp.status_code)
+print(resp.json())
 ```
 
-<div align="center">
-
-### Warm‑up: inject `localStorage` BEFORE page start
-
-</div>
+### Render previously fetched response (`goto_render`)
 
 ```python
-origin = "https://target.example"
-
-async with Session(headless=True, browser="camoufox") as s:
-    # prepare storage_state in advance
-    s.local_storage.setdefault(origin, {})
-    s.local_storage[origin]["seen"] = "1"
-    s.local_storage[origin]["ab_variant"] = "B"
-
-    # the browser starts with the required values already in place
-    async with s.goto_page(f"{origin}/", wait_until="networkidle"):
-        pass
+challenge = await page.fetch("https://example.com/challenge")
+await page.goto_render(challenge, wait_until="networkidle")
 ```
 
-<div align="center">
-
-### Accessing state
-
-</div>
+### State helpers
 
 ```python
-# Cookies:
-print(s.cookies.storage)
-
-# LocalStorage:
-print(s.local_storage.get("https://target.example", {}))
+cookies = await page.cookies()
+context_storage = await ctx.local_storage()
+page_storage = await page.local_storage()
+print(len(cookies), context_storage.keys(), page_storage.keys())
 ```
 
-<div align="center">
+### Fingerprint snapshot
 
-## Key Characteristics
-
-</div>
-
-- HTTP impersonation: `curl_cffi` + browser‑grade headers on every request.
-- Offline render: first response interception (fulfill) and soft reloads without recreating contexts.
-- State as a first‑class citizen: cookies and `localStorage` sync both ways.
-- Unified proxy layer: single proxy format → for `curl_cffi` and Playwright.
-- Clean stack: no external Go binaries.
-
-<div align="center">
-
-## 🧪 API Autotest Addon (pytest)
-
-</div>
-
-`human-requests` ships with a pytest plugin that can auto-run API methods marked with `@autotest` and validate payloads via `pytest-jsonschema-snapshot`.
-
-Install:
-
-```bash
-pip install pytest pytest-anyio pytest-jsonschema-snapshot human-requests[autotest]
+```python
+fingerprint = await ctx.fingerprint(origin="https://example.com")
+print(fingerprint.user_agent)
+print(fingerprint.browser_name, fingerprint.browser_version)
 ```
+
+## API Autotest Addon (pytest)
+
+`human-requests` ships with a pytest plugin that can auto-run API methods marked with `@autotest` and validate payloads via `schemashot` from `pytest-jsonschema-snapshot`.
 
 Minimal `pytest.ini`:
 
@@ -146,6 +131,7 @@ autotest_typecheck = warn
 ```
 
 `autotest_typecheck` modes:
+
 - `off` (default): no runtime type checks for params provider arguments
 - `warn`: emit `RuntimeWarning` on annotation mismatch
 - `strict`: fail test case with `TypeError` on mismatch
@@ -156,9 +142,11 @@ Minimal fixtures:
 import pytest
 from your_package import StartClass
 
+
 @pytest.fixture(scope="session")
 def anyio_backend() -> str:
     return "asyncio"
+
 
 @pytest.fixture(scope="session")
 async def api() -> StartClass:
@@ -170,6 +158,7 @@ Business code only marks methods:
 
 ```python
 from human_requests import autotest
+
 
 class Catalog:
     @autotest
@@ -183,9 +172,11 @@ Test layer adds hooks and params:
 from human_requests import autotest_depends_on, autotest_hook, autotest_params
 from human_requests.autotest import AutotestCallContext, AutotestContext
 
+
 @autotest_hook(target=Catalog.tree)
 def _capture_category(_resp, data, ctx: AutotestContext) -> None:
     ctx.state["category_id"] = data["items"][0]["id"]
+
 
 @autotest_depends_on(Catalog.tree)
 @autotest_params(target=Catalog.feed)
@@ -201,68 +192,27 @@ def _only_for_parent_a(_resp, data, ctx):
     ...
 ```
 
-For full guide see docs: `docs/source/autotest.rst`.
+For a complete guide, see `docs/source/autotest.rst`.
 
-<div align="center">
+## Development
 
-## Comparison: human-requests vs hrequests
-
-</div>
-
-| Aspect | human-requests | hrequests |
-|---|---|---|
-| Execution model | `asyncio` (native) | sync + threads/gevent |
-| HTTP impersonation | `curl_cffi` impersonate + per‑request browser headers | `tls-client` (Go backend) |
-| Offline `Response` render | Yes (fulfill + soft‑reload; no repeated HTTP) | Yes (post‑render with cookies/content update) |
-| Cookies ↔ HTTP/Browser | Two‑way transfer | Two‑way transfer |
-| `localStorage` ↔ HTTP/Browser | First‑class (storage_state ⇄ session) | Via `page.evaluate(...)` |
-| Typing | mypy‑friendly | — |
-| Dependencies | No Go binaries | Go backend (`tls-client`) |
-| Built‑in HTML parser | — | `selectolax` |
-
-> The focus of human-requests is a **controlled** anti‑bot pipeline in `asyncio`: HTTP by default, a browser only where needed, with state hand‑off.
-
-<div align="center">
-
-## 🛠️ Development
-
-### Setup
-
-</div>
+Setup:
 
 ```bash
 git clone https://github.com/Miskler/human-requests.git
 cd human-requests
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
-make build
-make install-dev
+pip install -r requirements.txt
+pip install -e .
 ```
 
-<div align="center">
-
-### Commands
-
-</div>
+Commands:
 
 ```bash
-# Checks
-pytest          # tests + coverage
-make lint       # ruff/flake8/isort/black (if enabled)
-make type-check # mypy/pyright
-# Actions
-make format     # formatting
-make docs       # build documentation
-```
-
-<div align="center">
-
-### Dev: local test server
-
-</div>
-
-```bash
-# from the test_server/ folder
-make serve  # foreground (Ctrl+C to stop)
-make stop   # stop background process
+pytest
+make lint
+make type-check
+make format
+make docs
 ```
