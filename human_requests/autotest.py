@@ -1,12 +1,23 @@
 from __future__ import annotations
 
-import inspect
 import heapq
+import inspect
 import types
 import warnings
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Annotated, Any, Literal, TypeVar, Union, cast, get_args, get_origin
+from typing import (
+    Annotated,
+    Any,
+    ContextManager,
+    Literal,
+    Protocol,
+    TypeVar,
+    Union,
+    cast,
+    get_args,
+    get_origin,
+)
 
 AutotestFunction = Callable[..., Any]
 AutotestHook = Callable[[Any, Any, "AutotestContext"], Any]
@@ -86,12 +97,18 @@ class AutotestCasePolicy:
     depends_on: tuple[AutotestFunction, ...] = ()
 
 
+class AutotestSubtests(Protocol):
+    def test(self, msg: str | None = None, **kwargs: Any) -> ContextManager[None]: ...
+
+
 def autotest(func: F) -> F:
     setattr(func, _AUTOTEST_ATTR, True)
     return func
 
 
-def autotest_depends_on(target: Callable[..., Any]) -> Callable[[DependencyMarker], DependencyMarker]:
+def autotest_depends_on(
+    target: Callable[..., Any],
+) -> Callable[[DependencyMarker], DependencyMarker]:
     dependency = _as_function(target)
 
     def decorator(callback: DependencyMarker) -> DependencyMarker:
@@ -317,16 +334,13 @@ async def execute_autotests(
     _validate_schemashot(schemashot)
     resolved_typecheck_mode = _normalize_typecheck_mode(typecheck_mode)
 
-    state: dict[str, Any] = {}
     executed_count = 0
-    completed_funcs: set[AutotestFunction] = set()
-    skipped_funcs: set[AutotestFunction] = set()
-    state["autotest_completed_funcs"] = completed_funcs
-    state["autotest_skipped_funcs"] = skipped_funcs
+    state, completed_funcs, skipped_funcs = _initialize_runtime_state()
 
     cases = discover_autotest_methods(api)
     for case in cases:
-        if any(dep not in completed_funcs for dep in case.depends_on):
+        missing_dependencies = tuple(dep for dep in case.depends_on if dep not in completed_funcs)
+        if missing_dependencies:
             skipped_funcs.add(case.func)
             continue
 
@@ -349,6 +363,58 @@ async def execute_autotests(
 
     executed_count += await execute_autotest_data_cases(api=api, schemashot=schemashot, state=state)
     return executed_count
+
+
+async def execute_autotests_with_subtests(
+    api: object,
+    schemashot: Any,
+    *,
+    subtests: AutotestSubtests,
+    typecheck_mode: AutotestTypecheckMode | str = "off",
+) -> int:
+    _validate_schemashot(schemashot)
+    resolved_typecheck_mode = _normalize_typecheck_mode(typecheck_mode)
+
+    processed_count = 0
+    state, completed_funcs, skipped_funcs = _initialize_runtime_state()
+
+    cases = discover_autotest_methods(api)
+    for case in cases:
+        processed_count += 1
+        case_succeeded = False
+        with subtests.test(**_subtest_label_for_case(case)):
+            missing_dependencies = tuple(
+                dep for dep in case.depends_on if dep not in completed_funcs
+            )
+            if missing_dependencies:
+                skipped_funcs.add(case.func)
+                _skip_current_case(_format_dependency_skip_reason(missing_dependencies))
+
+            try:
+                await execute_autotest_case(
+                    case=case,
+                    api=api,
+                    schemashot=schemashot,
+                    state=state,
+                    typecheck_mode=resolved_typecheck_mode,
+                )
+            except BaseException as error:  # pragma: no cover - runtime-only skip branch
+                if _is_pytest_skip_exception(error):
+                    skipped_funcs.add(case.func)
+                raise
+
+            case_succeeded = True
+
+        if case_succeeded:
+            completed_funcs.add(case.func)
+
+    processed_count += await _execute_autotest_data_cases_with_subtests(
+        api=api,
+        schemashot=schemashot,
+        state=state,
+        subtests=subtests,
+    )
+    return processed_count
 
 
 async def execute_autotest_case(
@@ -392,7 +458,7 @@ async def execute_autotest_case(
     if hook is not None:
         hook_result = hook(response, data, ctx)
         if inspect.isawaitable(hook_result):
-            hook_result = await cast(Awaitable[Any], hook_result)
+            hook_result = await hook_result
         if hook_result is not None:
             data = hook_result
 
@@ -412,10 +478,32 @@ async def execute_autotest_data_cases(
     for case in list(_DATA_CASES):
         payload = case.provider(ctx)
         if inspect.isawaitable(payload):
-            payload = await cast(Awaitable[Any], payload)
+            payload = await payload
         schemashot.assert_json_match(payload, case.name)
 
     return len(_DATA_CASES)
+
+
+async def _execute_autotest_data_cases_with_subtests(
+    *,
+    api: object,
+    schemashot: Any,
+    state: dict[str, Any],
+    subtests: AutotestSubtests,
+) -> int:
+    _validate_schemashot(schemashot)
+    ctx = AutotestDataContext(api=api, schemashot=schemashot, state=state)
+
+    processed_count = 0
+    for case in list(_DATA_CASES):
+        processed_count += 1
+        with subtests.test(**_subtest_label_for_data(case)):
+            payload = case.provider(ctx)
+            if inspect.isawaitable(payload):
+                payload = await payload
+            schemashot.assert_json_match(payload, case.name)
+
+    return processed_count
 
 
 def _is_autotest(func: AutotestFunction) -> bool:
@@ -500,11 +588,15 @@ def _required_parameters(method: Callable[..., Any]) -> tuple[str, ...]:
     required_arguments: list[str] = []
     signature = inspect.signature(method)
     for parameter in signature.parameters.values():
-        if parameter.kind in (
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            inspect.Parameter.KEYWORD_ONLY,
-        ) and parameter.default is inspect.Signature.empty:
+        if (
+            parameter.kind
+            in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            )
+            and parameter.default is inspect.Signature.empty
+        ):
             required_arguments.append(parameter.name)
 
     return tuple(required_arguments)
@@ -553,6 +645,55 @@ def _merge_dependencies(
     return tuple(merged)
 
 
+def _initialize_runtime_state() -> tuple[
+    dict[str, Any],
+    set[AutotestFunction],
+    set[AutotestFunction],
+]:
+    state: dict[str, Any] = {}
+    completed_funcs: set[AutotestFunction] = set()
+    skipped_funcs: set[AutotestFunction] = set()
+    state["autotest_completed_funcs"] = completed_funcs
+    state["autotest_skipped_funcs"] = skipped_funcs
+    return state, completed_funcs, skipped_funcs
+
+
+def _subtest_label_for_case(case: AutotestMethodCase) -> dict[str, str]:
+    parent_name = "None" if case.parent is None else type(case.parent).__name__
+    return {
+        "method": case.func.__qualname__,
+        "parent": parent_name,
+    }
+
+
+def _subtest_label_for_data(case: AutotestDataCase) -> dict[str, str]:
+    return {"data": _snapshot_name_repr(case.name)}
+
+
+def _snapshot_name_repr(name: object) -> str:
+    if isinstance(name, (str, int)):
+        return str(name)
+    if callable(name):
+        return getattr(name, "__qualname__", repr(name))
+    if isinstance(name, list):
+        return "[" + ", ".join(_snapshot_name_repr(item) for item in name) + "]"
+    return repr(name)
+
+
+def _format_dependency_skip_reason(missing: tuple[AutotestFunction, ...]) -> str:
+    names = ", ".join(dep.__qualname__ for dep in missing)
+    return f"Dependency was not executed: {names}"
+
+
+def _skip_current_case(reason: str) -> None:
+    try:
+        import pytest
+    except Exception as error:  # pragma: no cover - pytest runtime always has pytest installed
+        raise RuntimeError("pytest is required to skip autotest subtest cases.") from error
+
+    pytest.skip(reason)
+
+
 def _is_pytest_skip_exception(error: BaseException) -> bool:
     try:
         import pytest
@@ -578,7 +719,7 @@ async def _invoke_method(
     result = method(*invocation.args, **invocation.kwargs)
     if not inspect.isawaitable(result):
         raise TypeError(f"Autotest method {func.__qualname__} must be async.")
-    return await cast(Awaitable[Any], result)
+    return await result
 
 
 async def _resolve_invocation(
@@ -604,7 +745,7 @@ async def _resolve_invocation(
         )
         raw = provider(ctx)
         if inspect.isawaitable(raw):
-            raw = await cast(Awaitable[Any], raw)
+            raw = await raw
         invocation = _normalize_invocation(raw, case.func)
 
     _validate_invocation(
@@ -643,9 +784,7 @@ def _validate_invocation(
     try:
         bound_arguments = signature.bind(*invocation.args, **invocation.kwargs)
     except TypeError as error:
-        raise TypeError(
-            f"Invalid invocation for {func.__qualname__}: {error}"
-        ) from error
+        raise TypeError(f"Invalid invocation for {func.__qualname__}: {error}") from error
     _validate_invocation_types(
         signature=signature,
         bound_arguments=bound_arguments.arguments,
@@ -690,9 +829,7 @@ def _validate_invocation_types(
             continue
 
         expected = _format_annotation(annotation)
-        mismatches.append(
-            f"parameter {name!r} expects {expected}, got {type(value).__name__}"
-        )
+        mismatches.append(f"parameter {name!r} expects {expected}, got {type(value).__name__}")
 
     if not mismatches:
         return
@@ -773,7 +910,8 @@ def _matches_iterable(value: Any, annotation: Any, container_type: type[object])
     if not args:
         return True
     item_type = args[0]
-    return all(_matches_annotation(item, item_type) for item in value)
+    iterable_value = cast(Iterable[Any], value)
+    return all(_matches_annotation(item, item_type) for item in iterable_value)
 
 
 def _matches_mapping(value: Any, annotation: Any) -> bool:
@@ -815,6 +953,7 @@ def _format_annotation(annotation: Any) -> str:
 __all__ = [
     "AutotestCallContext",
     "AutotestContext",
+    "AutotestSubtests",
     "AutotestDataContext",
     "AutotestDataCase",
     "AutotestInvocation",
@@ -832,6 +971,7 @@ __all__ = [
     "execute_autotest_case",
     "execute_autotest_data_cases",
     "execute_autotests",
+    "execute_autotests_with_subtests",
     "find_autotest_hook",
     "find_autotest_hook_dependencies",
     "find_autotest_policy",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 import pytest
@@ -16,19 +17,23 @@ def _reset_hooks() -> None:
     clear_autotest_hooks()
 
 
+def _has_subtests_support() -> bool:
+    return (
+        importlib.util.find_spec("pytest_subtests") is not None
+        or importlib.util.find_spec("_pytest.subtests") is not None
+    )
+
+
 def test_plugin_runs_without_manual_tests(pytester: pytest.Pytester) -> None:
     project_root = Path(__file__).resolve().parents[1]
     snapshot_log = pytester.path / "snapshot_calls.log"
 
     pytester.syspathinsert(project_root)
-    pytester.makeini(
-        """
+    pytester.makeini("""
         [pytest]
         autotest_start_class = sample_lib.StartClass
-        """
-    )
-    pytester.makepyfile(
-        sample_lib="""
+        """)
+    pytester.makepyfile(sample_lib="""
         from human_requests import autotest
 
         class Response:
@@ -54,10 +59,8 @@ def test_plugin_runs_without_manual_tests(pytester: pytest.Pytester) -> None:
             @autotest
             async def root_method(self):
                 return Response({"value": "root"})
-        """
-    )
-    pytester.makeconftest(
-        f"""
+        """)
+    pytester.makeconftest(f"""
         import pytest
         from sample_lib import Child, StartClass
         from human_requests import autotest_hook
@@ -78,8 +81,7 @@ def test_plugin_runs_without_manual_tests(pytester: pytest.Pytester) -> None:
         @autotest_hook(target=Child.child_method, parent=StartClass)
         async def _hook(resp, data, ctx):
             return {{**data, "value": "child-hooked"}}
-        """
-    )
+        """)
 
     result = pytester.runpytest(
         "-q",
@@ -90,11 +92,110 @@ def test_plugin_runs_without_manual_tests(pytester: pytest.Pytester) -> None:
         "-p",
         "human_requests.pytest_plugin",
     )
-    result.assert_outcomes(passed=1)
+    outcomes = result.parseoutcomes()
+    assert outcomes.get("passed", 0) == 1
+    assert outcomes.get("skipped", 0) in (0, 2)
 
     lines = snapshot_log.read_text(encoding="utf-8").strip().splitlines()
     assert "StartClass.root_method|root" in lines
     assert "Child.child_method|child-hooked" in lines
+
+
+def test_plugin_uses_subtests_fixture_for_each_autotest_case(pytester: pytest.Pytester) -> None:
+    if not _has_subtests_support():
+        pytest.skip("subtests plugin is not available in this pytest environment")
+
+    project_root = Path(__file__).resolve().parents[1]
+    snapshot_log = pytester.path / "snapshot_calls_subtests.log"
+    subtests_log = pytester.path / "subtests_calls.log"
+
+    pytester.syspathinsert(project_root)
+    pytester.makeini("""
+        [pytest]
+        autotest_start_class = sample_lib.StartClass
+        """)
+    pytester.makepyfile(sample_lib="""
+        from human_requests import autotest
+
+        class Response:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def json(self):
+                return self.payload
+
+        class Child:
+            @autotest
+            async def child_method(self):
+                return Response({"value": "child"})
+
+        class StartClass:
+            def __init__(self):
+                self.parent = None
+                self.child = Child()
+                self.meta = {"ok": True}
+
+            @autotest
+            async def root_method(self):
+                return Response({"value": "root"})
+        """)
+    pytester.makeconftest(f"""
+        import contextlib
+        import pytest
+        from sample_lib import StartClass
+        from human_requests import autotest_data
+
+        class _SchemaShot:
+            def assert_json_match(self, data, func):
+                key = func.__qualname__ if hasattr(func, "__qualname__") else str(func)
+                with open(r"{snapshot_log}", "a", encoding="utf-8") as fp:
+                    fp.write(f"{{key}}\\n")
+
+        class _Subtests:
+            @contextlib.contextmanager
+            def test(self, msg=None, **kwargs):
+                label = kwargs.get("method") or kwargs.get("data") or msg or "unknown"
+                with open(r"{subtests_log}", "a", encoding="utf-8") as fp:
+                    fp.write(f"{{label}}\\n")
+                yield
+
+        @pytest.fixture
+        def api():
+            return StartClass()
+
+        @pytest.fixture
+        def schemashot():
+            return _SchemaShot()
+
+        @pytest.fixture
+        def subtests():
+            return _Subtests()
+
+        @autotest_data(name="custom_info")
+        def _data(ctx):
+            return {{"ok": ctx.api.meta["ok"]}}
+        """)
+
+    result = pytester.runpytest(
+        "-q",
+        "-p",
+        "subtests",
+        "-p",
+        "no:anyio",
+        "-p",
+        "no:human_requests_autotest",
+        "-p",
+        "human_requests.pytest_plugin",
+    )
+    outcomes = result.parseoutcomes()
+    assert outcomes.get("passed", 0) == 1
+    assert outcomes.get("skipped", 0) in (0, 2)
+
+    subtest_labels = set(subtests_log.read_text(encoding="utf-8").strip().splitlines())
+    assert subtest_labels == {"Child.child_method", "StartClass.root_method", "custom_info"}
+
+    snapshot_labels = set(snapshot_log.read_text(encoding="utf-8").strip().splitlines())
+    assert snapshot_labels == {"Child.child_method", "StartClass.root_method", "custom_info"}
 
 
 def test_plugin_does_not_call_api_during_collection(pytester: pytest.Pytester) -> None:
@@ -102,14 +203,11 @@ def test_plugin_does_not_call_api_during_collection(pytester: pytest.Pytester) -
     fixture_calls_file = pytester.path / "api_fixture_calls.log"
 
     pytester.syspathinsert(project_root)
-    pytester.makeini(
-        """
+    pytester.makeini("""
         [pytest]
         autotest_start_class = sample_lib.StartClass
-        """
-    )
-    pytester.makepyfile(
-        sample_lib="""
+        """)
+    pytester.makepyfile(sample_lib="""
         from human_requests import autotest
 
         class Response:
@@ -120,10 +218,8 @@ def test_plugin_does_not_call_api_during_collection(pytester: pytest.Pytester) -
             @autotest
             async def ping(self):
                 return Response()
-        """
-    )
-    pytester.makeconftest(
-        f"""
+        """)
+    pytester.makeconftest(f"""
         import pytest
         from sample_lib import StartClass
 
@@ -140,8 +236,7 @@ def test_plugin_does_not_call_api_during_collection(pytester: pytest.Pytester) -
         @pytest.fixture
         def schemashot():
             return _SchemaShot()
-        """
-    )
+        """)
 
     collect_result = pytester.runpytest(
         "--collect-only",
@@ -175,15 +270,12 @@ def test_plugin_supports_anyio_async_api_fixture(pytester: pytest.Pytester) -> N
     snapshot_log = pytester.path / "snapshot_calls_anyio.log"
 
     pytester.syspathinsert(project_root)
-    pytester.makeini(
-        """
+    pytester.makeini("""
         [pytest]
         anyio_mode = auto
         autotest_start_class = sample_lib.StartClass
-        """
-    )
-    pytester.makepyfile(
-        sample_lib="""
+        """)
+    pytester.makepyfile(sample_lib="""
         from human_requests import autotest
 
         class Response:
@@ -197,10 +289,8 @@ def test_plugin_supports_anyio_async_api_fixture(pytester: pytest.Pytester) -> N
             @autotest
             async def ping(self):
                 return Response({"ok": True})
-        """
-    )
-    pytester.makeconftest(
-        f"""
+        """)
+    pytester.makeconftest(f"""
         import pytest
         from sample_lib import StartClass
 
@@ -220,8 +310,7 @@ def test_plugin_supports_anyio_async_api_fixture(pytester: pytest.Pytester) -> N
         @pytest.fixture
         def schemashot():
             return _SchemaShot()
-        """
-    )
+        """)
 
     result = pytester.runpytest(
         "-q",
@@ -241,14 +330,11 @@ def test_plugin_supports_params_and_data_cases(pytester: pytest.Pytester) -> Non
     snapshot_log = pytester.path / "snapshot_calls_params_data.log"
 
     pytester.syspathinsert(project_root)
-    pytester.makeini(
-        """
+    pytester.makeini("""
         [pytest]
         autotest_start_class = sample_lib.StartClass
-        """
-    )
-    pytester.makepyfile(
-        sample_lib="""
+        """)
+    pytester.makepyfile(sample_lib="""
         from human_requests import autotest
 
         class Response:
@@ -268,10 +354,8 @@ def test_plugin_supports_params_and_data_cases(pytester: pytest.Pytester) -> Non
                 self.parent = None
                 self.child = Child()
                 self.info = {"v": 1}
-        """
-    )
-    pytester.makeconftest(
-        f"""
+        """)
+    pytester.makeconftest(f"""
         import pytest
         from sample_lib import Child, StartClass
         from human_requests import autotest_data, autotest_params
@@ -297,8 +381,7 @@ def test_plugin_supports_params_and_data_cases(pytester: pytest.Pytester) -> Non
         @autotest_data(name="custom_info")
         def _data(ctx):
             return {{"v": ctx.api.info["v"]}}
-        """
-    )
+        """)
 
     result = pytester.runpytest(
         "-q",
@@ -309,7 +392,9 @@ def test_plugin_supports_params_and_data_cases(pytester: pytest.Pytester) -> Non
         "-p",
         "human_requests.pytest_plugin",
     )
-    result.assert_outcomes(passed=1)
+    outcomes = result.parseoutcomes()
+    assert outcomes.get("passed", 0) == 1
+    assert outcomes.get("skipped", 0) in (0, 2)
 
     lines = snapshot_log.read_text(encoding="utf-8").strip().splitlines()
     assert "Child.by_id|{'item_id': 42}" in lines
@@ -321,14 +406,11 @@ def test_plugin_respects_policy_and_dependency_skips(pytester: pytest.Pytester) 
     snapshot_log = pytester.path / "snapshot_calls_policy.log"
 
     pytester.syspathinsert(project_root)
-    pytester.makeini(
-        """
+    pytester.makeini("""
         [pytest]
         autotest_start_class = sample_lib.StartClass
-        """
-    )
-    pytester.makepyfile(
-        sample_lib="""
+        """)
+    pytester.makepyfile(sample_lib="""
         from human_requests import autotest
 
         class Response:
@@ -353,10 +435,8 @@ def test_plugin_respects_policy_and_dependency_skips(pytester: pytest.Pytester) 
             @autotest
             async def m_independent(self):
                 return Response({"name": "independent"})
-        """
-    )
-    pytester.makeconftest(
-        f"""
+        """)
+    pytester.makeconftest(f"""
         import pytest
         from sample_lib import StartClass
         from human_requests import autotest_hook, autotest_policy
@@ -381,8 +461,7 @@ def test_plugin_respects_policy_and_dependency_skips(pytester: pytest.Pytester) 
         @autotest_hook(target=StartClass.z_source)
         def _skip_source(resp, data, ctx):
             pytest.skip("source disabled")
-        """
-    )
+        """)
 
     result = pytester.runpytest(
         "-q",
@@ -393,7 +472,9 @@ def test_plugin_respects_policy_and_dependency_skips(pytester: pytest.Pytester) 
         "-p",
         "human_requests.pytest_plugin",
     )
-    result.assert_outcomes(passed=1)
+    outcomes = result.parseoutcomes()
+    assert outcomes.get("passed", 0) == 1
+    assert outcomes.get("skipped", 0) in (0, 2)
 
     lines = snapshot_log.read_text(encoding="utf-8").strip().splitlines()
     assert lines == ["StartClass.m_independent|independent"]
@@ -404,14 +485,11 @@ def test_plugin_supports_dependency_marker_on_params(pytester: pytest.Pytester) 
     snapshot_log = pytester.path / "snapshot_calls_dep_marker.log"
 
     pytester.syspathinsert(project_root)
-    pytester.makeini(
-        """
+    pytester.makeini("""
         [pytest]
         autotest_start_class = sample_lib.StartClass
-        """
-    )
-    pytester.makepyfile(
-        sample_lib="""
+        """)
+    pytester.makepyfile(sample_lib="""
         from human_requests import autotest
 
         class Response:
@@ -432,10 +510,8 @@ def test_plugin_supports_dependency_marker_on_params(pytester: pytest.Pytester) 
             @autotest
             async def dependent(self, item_id):
                 return Response({"item_id": item_id})
-        """
-    )
-    pytester.makeconftest(
-        f"""
+        """)
+    pytester.makeconftest(f"""
         import pytest
         from sample_lib import StartClass
         from human_requests import autotest_depends_on, autotest_hook, autotest_params
@@ -461,8 +537,7 @@ def test_plugin_supports_dependency_marker_on_params(pytester: pytest.Pytester) 
         @autotest_params(target=StartClass.dependent)
         def _params(ctx):
             return {{"item_id": ctx.state["item_id"]}}
-        """
-    )
+        """)
 
     result = pytester.runpytest(
         "-q",
@@ -486,15 +561,12 @@ def test_plugin_typecheck_strict_fails_on_annotation_mismatch(pytester: pytest.P
     project_root = Path(__file__).resolve().parents[1]
 
     pytester.syspathinsert(project_root)
-    pytester.makeini(
-        """
+    pytester.makeini("""
         [pytest]
         autotest_start_class = sample_lib.StartClass
         autotest_typecheck = strict
-        """
-    )
-    pytester.makepyfile(
-        sample_lib="""
+        """)
+    pytester.makepyfile(sample_lib="""
         from human_requests import autotest
 
         class Response:
@@ -511,10 +583,8 @@ def test_plugin_typecheck_strict_fails_on_annotation_mismatch(pytester: pytest.P
             @autotest
             async def typed(self, item_id: int):
                 return Response({"item_id": item_id})
-        """
-    )
-    pytester.makeconftest(
-        """
+        """)
+    pytester.makeconftest("""
         import pytest
         from sample_lib import StartClass
         from human_requests import autotest_params
@@ -534,8 +604,7 @@ def test_plugin_typecheck_strict_fails_on_annotation_mismatch(pytester: pytest.P
         @autotest_params(target=StartClass.typed)
         def _params(_ctx):
             return {"item_id": "bad"}
-        """
-    )
+        """)
 
     result = pytester.runpytest(
         "-q",
@@ -547,9 +616,14 @@ def test_plugin_typecheck_strict_fails_on_annotation_mismatch(pytester: pytest.P
         "human_requests.pytest_plugin",
     )
 
-    result.assert_outcomes(failed=1)
+    assert result.ret != 0
     result.stdout.fnmatch_lines(
-        ["*Invalid invocation types for StartClass.typed: parameter 'item_id' expects int, got str.*"]
+        [
+            (
+                "*Invalid invocation types for StartClass.typed: "
+                "parameter 'item_id' expects int, got str.*"
+            )
+        ]
     )
 
 
@@ -557,15 +631,12 @@ def test_plugin_rejects_invalid_typecheck_mode(pytester: pytest.Pytester) -> Non
     project_root = Path(__file__).resolve().parents[1]
 
     pytester.syspathinsert(project_root)
-    pytester.makeini(
-        """
+    pytester.makeini("""
         [pytest]
         autotest_start_class = sample_lib.StartClass
         autotest_typecheck = maybe
-        """
-    )
-    pytester.makepyfile(
-        sample_lib="""
+        """)
+    pytester.makepyfile(sample_lib="""
         from human_requests import autotest
 
         class Response:
@@ -576,10 +647,8 @@ def test_plugin_rejects_invalid_typecheck_mode(pytester: pytest.Pytester) -> Non
             @autotest
             async def ping(self):
                 return Response()
-        """
-    )
-    pytester.makeconftest(
-        """
+        """)
+    pytester.makeconftest("""
         import pytest
         from sample_lib import StartClass
 
@@ -594,8 +663,7 @@ def test_plugin_rejects_invalid_typecheck_mode(pytester: pytest.Pytester) -> Non
         @pytest.fixture
         def schemashot():
             return _SchemaShot()
-        """
-    )
+        """)
 
     result = pytester.runpytest(
         "-q",
@@ -609,5 +677,10 @@ def test_plugin_rejects_invalid_typecheck_mode(pytester: pytest.Pytester) -> Non
 
     assert result.ret != 0
     result.stdout.fnmatch_lines(
-        ["*UsageError: Invalid autotest_typecheck value 'maybe'. Expected one of: off, strict, warn.*"]
+        [
+            (
+                "*UsageError: Invalid autotest_typecheck value 'maybe'. "
+                "Expected one of: off, strict, warn.*"
+            )
+        ]
     )

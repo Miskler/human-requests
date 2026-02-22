@@ -16,7 +16,14 @@ AUTH_VARIANTS = [
     (None, "onlypass"),  # only password
 ]
 INPUT_TYPES = ["str_with_proto", "str_without_proto", "playwright_dict", "direct_kwargs"]
-ENV_PROXY_KEYS = ("https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY")
+ENV_PROXY_KEYS = (
+    "https_proxy",
+    "HTTPS_PROXY",
+    "http_proxy",
+    "HTTP_PROXY",
+    "all_proxy",
+    "ALL_PROXY",
+)
 
 
 def clear_proxy_env(monkeypatch):

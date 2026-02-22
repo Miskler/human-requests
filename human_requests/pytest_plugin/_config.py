@@ -52,10 +52,7 @@ def resolve_runtime_dependencies(request: pytest.FixtureRequest) -> tuple[object
     if not isinstance(api, start_class):
         expected = f"{start_class.__module__}.{start_class.__qualname__}"
         actual = f"{type(api).__module__}.{type(api).__qualname__}"
-        raise TypeError(
-            f"`api` fixture must return an instance of {expected}. "
-            f"Got {actual}."
-        )
+        raise TypeError(f"`api` fixture must return an instance of {expected}. " f"Got {actual}.")
 
     schemashot = request.getfixturevalue("schemashot")
     return api, schemashot
@@ -83,8 +80,6 @@ def import_start_class(dotted_path: str) -> type[Any]:
 
     start_class = getattr(module, class_name)
     if not inspect.isclass(start_class):
-        raise pytest.UsageError(
-            f"{AUTOTEST_INI_KEY}={dotted_path!r} must point to a class."
-        )
+        raise pytest.UsageError(f"{AUTOTEST_INI_KEY}={dotted_path!r} must point to a class.")
 
     return start_class

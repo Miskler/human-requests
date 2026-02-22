@@ -20,7 +20,7 @@ Installation
 
 .. code-block:: bash
 
-    pip install pytest pytest-anyio pytest-jsonschema-snapshot human-requests[autotest]
+    pip install pytest pytest-anyio pytest-jsonschema-snapshot pytest-subtests human-requests[autotest]
 
 
 Pytest Configuration
@@ -73,6 +73,8 @@ Example:
             yield client
 
 The plugin adds one runtime test item: ``test_autotest_api_methods``.
+When ``pytest-subtests`` is installed, each discovered ``@autotest`` method
+and each ``@autotest_data`` case is reported as a separate subtest entry.
 
 
 Business Layer Marker

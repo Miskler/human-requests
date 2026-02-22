@@ -39,7 +39,9 @@ def _has_anyio_plugin(config: pytest.Config) -> bool:
 def _pick_runner_parent(session: pytest.Session, items: list[pytest.Item]) -> pytest.Collector:
     for item in items:
         if isinstance(item, pytest.Function):
-            return item.parent
+            parent = item.parent
+            if isinstance(parent, pytest.Collector):
+                return parent
     return session
 
 

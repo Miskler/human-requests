@@ -47,7 +47,7 @@ playwright install chromium
 Optional autotest addon dependencies:
 
 ```bash
-pip install human-requests[autotest] pytest pytest-anyio pytest-jsonschema-snapshot
+pip install human-requests[autotest] pytest pytest-anyio pytest-jsonschema-snapshot pytest-subtests
 ```
 
 If you run with Camoufox, install it separately:
@@ -165,6 +165,8 @@ class RootApi(ApiParent):
 ## API Autotest Addon (pytest)
 
 `human-requests` ships with a pytest plugin that can auto-run API methods marked with `@autotest` and validate payloads via `schemashot` from `pytest-jsonschema-snapshot`.
+With `pytest-subtests`, each discovered `@autotest` method and `@autotest_data`
+provider is shown as a separate subtest inside `test_autotest_api_methods`.
 
 Minimal `pytest.ini`:
 

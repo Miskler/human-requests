@@ -33,7 +33,8 @@ dependencies = [
 
 [project.optional-dependencies]
 autotest = [
-    "pytest-jsonschema-snapshot"
+    "pytest-jsonschema-snapshot",
+    "pytest-subtests"
 ]
 
 [project.urls]

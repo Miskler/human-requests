@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import Field, field
 from inspect import signature
-from dataclasses import field, fields, is_dataclass
 from typing import Any, Callable, Generic, TypeVar, cast
 
 ParentT = TypeVar("ParentT")
@@ -33,12 +33,13 @@ class ApiParent:
     """
 
     def __post_init__(self) -> None:
-        if not is_dataclass(self):
+        dataclass_fields = getattr(self, "__dataclass_fields__", None)
+        if not isinstance(dataclass_fields, dict):
             raise TypeError("ApiParent can only be used with dataclasses")
 
-        for dataclass_field in fields(self):
+        for dataclass_field in cast(dict[str, Field[Any]], dataclass_fields).values():
             child_factory = cast(
-                Callable[[Any], Any] | None,
+                Callable[..., Any] | None,
                 dataclass_field.metadata.get(_API_CHILD_FACTORY_META),
             )
             if child_factory is None:
@@ -52,7 +53,7 @@ class ApiParent:
 
 
 def api_child_field(
-    child_factory: Callable[[FactoryParentT], FactoryChildT],
+    child_factory: Callable[..., FactoryChildT],
     *,
     repr: bool = False,
     compare: bool = False,
@@ -72,7 +73,7 @@ def api_child_field(
     )
 
 
-def _create_child(child_factory: Callable[[Any], Any], parent: Any) -> Any:
+def _create_child(child_factory: Callable[..., Any], parent: Any) -> Any:
     try:
         call_signature = signature(child_factory)
         accepts_parent = _can_bind_single_positional(call_signature, parent)
