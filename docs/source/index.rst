@@ -6,6 +6,7 @@ Welcome to human-requests documentation!
    :caption: Basic use
 
    quick_start
+   autotest
    browser_selection/index
    interesting
 

@@ -7,7 +7,6 @@ import pytest
 
 from human_requests.autotest import (
     AutotestCallContext,
-    AutotestCasePolicy,
     AutotestContext,
     autotest,
     autotest_data,
@@ -166,6 +165,55 @@ async def test_required_arguments_can_be_provided_with_autotest_params() -> None
 
 
 @pytest.mark.asyncio
+async def test_typecheck_strict_raises_for_annotation_mismatch() -> None:
+    class _Typed:
+        @autotest
+        async def by_id(self, item_id: int) -> _Response:
+            return _Response({"item_id": item_id})
+
+    class _Root:
+        def __init__(self) -> None:
+            self.parent = None
+            self.typed = _Typed()
+
+    api = _Root()
+    schemashot = _SchemaShotSpy()
+
+    @autotest_params(target=_Typed.by_id)
+    def _params(_ctx: AutotestCallContext) -> dict[str, str]:
+        return {"item_id": "bad"}
+
+    with pytest.raises(TypeError, match=r"parameter 'item_id' expects int, got str"):
+        await execute_autotests(api=api, schemashot=schemashot, typecheck_mode="strict")
+
+
+@pytest.mark.asyncio
+async def test_typecheck_warn_emits_warning_and_keeps_execution() -> None:
+    class _Typed:
+        @autotest
+        async def by_id(self, item_id: int) -> _Response:
+            return _Response({"item_id": item_id})
+
+    class _Root:
+        def __init__(self) -> None:
+            self.parent = None
+            self.typed = _Typed()
+
+    api = _Root()
+    schemashot = _SchemaShotSpy()
+
+    @autotest_params(target=_Typed.by_id)
+    def _params(_ctx: AutotestCallContext) -> dict[str, str]:
+        return {"item_id": "bad"}
+
+    with pytest.warns(RuntimeWarning, match=r"parameter 'item_id' expects int, got str"):
+        executed = await execute_autotests(api=api, schemashot=schemashot, typecheck_mode="warn")
+
+    assert executed == 1
+    assert schemashot.calls == [(_Typed.by_id.__qualname__, {"item_id": "bad"})]
+
+
+@pytest.mark.asyncio
 async def test_autotest_data_registers_extra_snapshots() -> None:
     api = _A()
     schemashot = _SchemaShotSpy()
@@ -182,7 +230,7 @@ async def test_autotest_data_registers_extra_snapshots() -> None:
 
 
 @pytest.mark.asyncio
-async def test_policy_controls_order_and_dependencies() -> None:
+async def test_policy_controls_dependencies() -> None:
     call_order: list[str] = []
 
     class _Sequenced:
@@ -199,11 +247,7 @@ async def test_policy_controls_order_and_dependencies() -> None:
     api = _Sequenced()
     schemashot = _SchemaShotSpy()
 
-    @autotest_policy(target=_Sequenced.z_prepare, order=10)
-    def _prepare_policy() -> None:
-        return None
-
-    @autotest_policy(target=_Sequenced.a_run, order=20, depends_on=[_Sequenced.z_prepare])
+    @autotest_policy(target=_Sequenced.a_run, depends_on=[_Sequenced.z_prepare])
     def _run_policy() -> None:
         return None
 
@@ -235,16 +279,8 @@ async def test_dependency_is_skipped_if_upstream_case_skipped() -> None:
     api = _Dependent()
     schemashot = _SchemaShotSpy()
 
-    @autotest_policy(target=_Dependent.source, order=10)
-    def _source_policy() -> None:
-        return None
-
-    @autotest_policy(target=_Dependent.dependent, order=20, depends_on=[_Dependent.source])
+    @autotest_policy(target=_Dependent.dependent, depends_on=[_Dependent.source])
     def _dependent_policy() -> None:
-        return None
-
-    @autotest_policy(target=_Dependent.independent, order=30)
-    def _independent_policy() -> None:
         return None
 
     @autotest_hook(target=_Dependent.source)
@@ -335,6 +371,14 @@ async def test_multiple_dependency_markers_on_provider_skip_when_missing() -> No
 def test_find_policy_prefers_parent_then_global() -> None:
     class _Child:
         @autotest
+        async def global_dep(self) -> _Response:
+            return _Response({"ok": True})
+
+        @autotest
+        async def parent_dep(self) -> _Response:
+            return _Response({"ok": True})
+
+        @autotest
         async def ping(self) -> _Response:
             return _Response({"ok": True})
 
@@ -348,11 +392,11 @@ def test_find_policy_prefers_parent_then_global() -> None:
             self.parent = None
             self.child = _Child()
 
-    @autotest_policy(target=_Child.ping, order=5)
+    @autotest_policy(target=_Child.ping, depends_on=[_Child.global_dep])
     def _global_policy() -> None:
         return None
 
-    @autotest_policy(target=_Child.ping, parent=_Parent, order=1)
+    @autotest_policy(target=_Child.ping, parent=_Parent, depends_on=[_Child.parent_dep])
     def _parent_policy() -> None:
         return None
 
@@ -361,6 +405,5 @@ def test_find_policy_prefers_parent_then_global() -> None:
     parent_policy = find_autotest_policy(_Child.ping, parent_api)
     global_policy = find_autotest_policy(_Child.ping, other_api)
 
-    assert isinstance(parent_policy, AutotestCasePolicy)
-    assert parent_policy.order == 1
-    assert global_policy.order == 5
+    assert parent_policy.depends_on == (_Child.parent_dep,)
+    assert global_policy.depends_on == (_Child.global_dep,)

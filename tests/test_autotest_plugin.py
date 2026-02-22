@@ -374,16 +374,8 @@ def test_plugin_respects_policy_and_dependency_skips(pytester: pytest.Pytester) 
         def schemashot():
             return _SchemaShot()
 
-        @autotest_policy(target=StartClass.z_source, order=10)
-        def _source_policy():
-            return None
-
-        @autotest_policy(target=StartClass.a_dependent, order=20, depends_on=[StartClass.z_source])
+        @autotest_policy(target=StartClass.a_dependent, depends_on=[StartClass.z_source])
         def _dependent_policy():
-            return None
-
-        @autotest_policy(target=StartClass.m_independent, order=30)
-        def _independent_policy():
             return None
 
         @autotest_hook(target=StartClass.z_source)
@@ -488,3 +480,134 @@ def test_plugin_supports_dependency_marker_on_params(pytester: pytest.Pytester) 
         "StartClass.source|{'id': 77}",
         "StartClass.dependent|{'item_id': 77}",
     ]
+
+
+def test_plugin_typecheck_strict_fails_on_annotation_mismatch(pytester: pytest.Pytester) -> None:
+    project_root = Path(__file__).resolve().parents[1]
+
+    pytester.syspathinsert(project_root)
+    pytester.makeini(
+        """
+        [pytest]
+        autotest_start_class = sample_lib.StartClass
+        autotest_typecheck = strict
+        """
+    )
+    pytester.makepyfile(
+        sample_lib="""
+        from human_requests import autotest
+
+        class Response:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def json(self):
+                return self.payload
+
+        class StartClass:
+            def __init__(self):
+                self.parent = None
+
+            @autotest
+            async def typed(self, item_id: int):
+                return Response({"item_id": item_id})
+        """
+    )
+    pytester.makeconftest(
+        """
+        import pytest
+        from sample_lib import StartClass
+        from human_requests import autotest_params
+
+        class _SchemaShot:
+            def assert_json_match(self, data, func):
+                return None
+
+        @pytest.fixture
+        def api():
+            return StartClass()
+
+        @pytest.fixture
+        def schemashot():
+            return _SchemaShot()
+
+        @autotest_params(target=StartClass.typed)
+        def _params(_ctx):
+            return {"item_id": "bad"}
+        """
+    )
+
+    result = pytester.runpytest(
+        "-q",
+        "-p",
+        "no:anyio",
+        "-p",
+        "no:human_requests_autotest",
+        "-p",
+        "human_requests.pytest_plugin",
+    )
+
+    result.assert_outcomes(failed=1)
+    result.stdout.fnmatch_lines(
+        ["*Invalid invocation types for StartClass.typed: parameter 'item_id' expects int, got str.*"]
+    )
+
+
+def test_plugin_rejects_invalid_typecheck_mode(pytester: pytest.Pytester) -> None:
+    project_root = Path(__file__).resolve().parents[1]
+
+    pytester.syspathinsert(project_root)
+    pytester.makeini(
+        """
+        [pytest]
+        autotest_start_class = sample_lib.StartClass
+        autotest_typecheck = maybe
+        """
+    )
+    pytester.makepyfile(
+        sample_lib="""
+        from human_requests import autotest
+
+        class Response:
+            def json(self):
+                return {"ok": True}
+
+        class StartClass:
+            @autotest
+            async def ping(self):
+                return Response()
+        """
+    )
+    pytester.makeconftest(
+        """
+        import pytest
+        from sample_lib import StartClass
+
+        class _SchemaShot:
+            def assert_json_match(self, data, func):
+                return None
+
+        @pytest.fixture
+        def api():
+            return StartClass()
+
+        @pytest.fixture
+        def schemashot():
+            return _SchemaShot()
+        """
+    )
+
+    result = pytester.runpytest(
+        "-q",
+        "-p",
+        "no:anyio",
+        "-p",
+        "no:human_requests_autotest",
+        "-p",
+        "human_requests.pytest_plugin",
+    )
+
+    assert result.ret != 0
+    result.stdout.fnmatch_lines(
+        ["*UsageError: Invalid autotest_typecheck value 'maybe'. Expected one of: off, strict, warn.*"]
+    )

@@ -124,6 +124,87 @@ print(s.local_storage.get("https://target.example", {}))
 
 <div align="center">
 
+## 🧪 API Autotest Addon (pytest)
+
+</div>
+
+`human-requests` ships with a pytest plugin that can auto-run API methods marked with `@autotest` and validate payloads via `pytest-jsonschema-snapshot`.
+
+Install:
+
+```bash
+pip install pytest pytest-anyio pytest-jsonschema-snapshot human-requests[autotest]
+```
+
+Minimal `pytest.ini`:
+
+```ini
+[pytest]
+anyio_mode = auto
+autotest_start_class = your_package.StartClass
+autotest_typecheck = warn
+```
+
+`autotest_typecheck` modes:
+- `off` (default): no runtime type checks for params provider arguments
+- `warn`: emit `RuntimeWarning` on annotation mismatch
+- `strict`: fail test case with `TypeError` on mismatch
+
+Minimal fixtures:
+
+```python
+import pytest
+from your_package import StartClass
+
+@pytest.fixture(scope="session")
+def anyio_backend() -> str:
+    return "asyncio"
+
+@pytest.fixture(scope="session")
+async def api() -> StartClass:
+    async with StartClass() as client:
+        yield client
+```
+
+Business code only marks methods:
+
+```python
+from human_requests import autotest
+
+class Catalog:
+    @autotest
+    async def tree(self):
+        ...
+```
+
+Test layer adds hooks and params:
+
+```python
+from human_requests import autotest_depends_on, autotest_hook, autotest_params
+from human_requests.autotest import AutotestCallContext, AutotestContext
+
+@autotest_hook(target=Catalog.tree)
+def _capture_category(_resp, data, ctx: AutotestContext) -> None:
+    ctx.state["category_id"] = data["items"][0]["id"]
+
+@autotest_depends_on(Catalog.tree)
+@autotest_params(target=Catalog.feed)
+def _feed_params(ctx: AutotestCallContext) -> dict[str, int]:
+    return {"category_id": ctx.state["category_id"]}
+```
+
+Parent-specific registration is supported:
+
+```python
+@autotest_hook(target=Child.method, parent=ParentA)
+def _only_for_parent_a(_resp, data, ctx):
+    ...
+```
+
+For full guide see docs: `docs/source/autotest.rst`.
+
+<div align="center">
+
 ## Comparison: human-requests vs hrequests
 
 </div>

@@ -139,3 +139,5 @@ For more details, also see:
 * :class:`~human_requests.abstraction.http.HttpMethod`
 
 For choosing the right browser, see :ref:`browser_selection`
+
+For API snapshot automation in pytest, see :doc:`autotest`.

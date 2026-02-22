@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import inspect
 import heapq
-from collections.abc import Awaitable, Callable, Iterable, Sequence
+import types
+import warnings
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, TypeVar, cast
+from typing import Annotated, Any, Literal, TypeVar, Union, cast, get_args, get_origin
 
 AutotestFunction = Callable[..., Any]
 AutotestHook = Callable[[Any, Any, "AutotestContext"], Any]
 AutotestParamProvider = Callable[["AutotestCallContext"], Any]
 AutotestDataProvider = Callable[["AutotestDataContext"], Any]
+AutotestTypecheckMode = Literal["off", "warn", "strict"]
 SnapshotName = str | int | Callable[..., Any] | list[str | int | Callable[..., Any]]
 HookKey = tuple[type[object] | None, AutotestFunction]
 DependencyMarker = Callable[..., Any]
@@ -20,6 +23,7 @@ _HOOKS: dict[HookKey, AutotestHook] = {}
 _PARAM_PROVIDERS: dict[HookKey, AutotestParamProvider] = {}
 _CASE_POLICIES: dict[HookKey, "AutotestCasePolicy"] = {}
 _DATA_CASES: list["AutotestDataCase"] = []
+_VALID_TYPECHECK_MODES: frozenset[str] = frozenset({"off", "warn", "strict"})
 
 _PrimitiveTypes = (str, bytes, bytearray, bool, int, float, complex, range, memoryview)
 
@@ -44,7 +48,6 @@ class AutotestMethodCase:
     method: Callable[..., Awaitable[Any]]
     func: AutotestFunction
     required_parameters: tuple[str, ...]
-    order: int
     depends_on: tuple[AutotestFunction, ...]
 
 
@@ -80,7 +83,6 @@ class AutotestDataCase:
 
 @dataclass(frozen=True)
 class AutotestCasePolicy:
-    order: int = 0
     depends_on: tuple[AutotestFunction, ...] = ()
 
 
@@ -123,7 +125,6 @@ def autotest_params(
     *,
     target: Callable[..., Any],
     parent: type[object] | None = None,
-    order: int | None = None,
     depends_on: Sequence[Callable[..., Any]] | None = None,
 ) -> Callable[[AutotestParamProvider], AutotestParamProvider]:
     if parent is not None and not inspect.isclass(parent):
@@ -131,15 +132,13 @@ def autotest_params(
 
     target_func = _as_function(target)
     depends_on_funcs = _normalize_depends_on(depends_on)
-    _validate_order(order)
 
     def decorator(provider: AutotestParamProvider) -> AutotestParamProvider:
         _PARAM_PROVIDERS[(parent, target_func)] = provider
-        if order is not None or depends_on_funcs:
+        if depends_on_funcs:
             _register_case_policy(
                 parent=parent,
                 target_func=target_func,
-                order=order,
                 depends_on=depends_on_funcs,
             )
         return provider
@@ -151,7 +150,6 @@ def autotest_policy(
     *,
     target: Callable[..., Any],
     parent: type[object] | None = None,
-    order: int | None = None,
     depends_on: Sequence[Callable[..., Any]] | None = None,
 ) -> Callable[[F], F]:
     if parent is not None and not inspect.isclass(parent):
@@ -159,11 +157,9 @@ def autotest_policy(
 
     target_func = _as_function(target)
     depends_on_funcs = _normalize_depends_on(depends_on)
-    _validate_order(order)
     _register_case_policy(
         parent=parent,
         target_func=target_func,
-        order=order,
         depends_on=depends_on_funcs,
     )
 
@@ -300,7 +296,6 @@ def discover_autotest_methods(api: object) -> list[AutotestMethodCase]:
                             method=cast(Callable[..., Awaitable[Any]], bound_method),
                             func=func,
                             required_parameters=required_parameters,
-                            order=policy.order,
                             depends_on=dependencies,
                         )
                     )
@@ -313,8 +308,14 @@ def discover_autotest_methods(api: object) -> list[AutotestMethodCase]:
     return _order_cases(cases)
 
 
-async def execute_autotests(api: object, schemashot: Any) -> int:
+async def execute_autotests(
+    api: object,
+    schemashot: Any,
+    *,
+    typecheck_mode: AutotestTypecheckMode | str = "off",
+) -> int:
     _validate_schemashot(schemashot)
+    resolved_typecheck_mode = _normalize_typecheck_mode(typecheck_mode)
 
     state: dict[str, Any] = {}
     executed_count = 0
@@ -330,7 +331,13 @@ async def execute_autotests(api: object, schemashot: Any) -> int:
             continue
 
         try:
-            await execute_autotest_case(case=case, api=api, schemashot=schemashot, state=state)
+            await execute_autotest_case(
+                case=case,
+                api=api,
+                schemashot=schemashot,
+                state=state,
+                typecheck_mode=resolved_typecheck_mode,
+            )
         except BaseException as error:  # pragma: no cover - runtime-only branch for skip semantics
             if _is_pytest_skip_exception(error):
                 skipped_funcs.add(case.func)
@@ -350,14 +357,17 @@ async def execute_autotest_case(
     api: object,
     schemashot: Any,
     state: dict[str, Any] | None = None,
+    typecheck_mode: AutotestTypecheckMode | str = "off",
 ) -> None:
     _validate_schemashot(schemashot)
+    resolved_typecheck_mode = _normalize_typecheck_mode(typecheck_mode)
     runtime_state = state if state is not None else {}
     invocation = await _resolve_invocation(
         case=case,
         api=api,
         schemashot=schemashot,
         state=runtime_state,
+        typecheck_mode=resolved_typecheck_mode,
     )
 
     response = await _invoke_method(case.method, case.func, invocation)
@@ -460,22 +470,21 @@ def _order_cases(cases: list[AutotestMethodCase]) -> list[AutotestMethodCase]:
                 edges[source_index].add(target_index)
                 indegree[target_index] += 1
 
-    queue: list[tuple[int, str, int]] = []
+    queue: list[tuple[str, int]] = []
     for index, case in enumerate(cases):
         if indegree[index] == 0:
-            heapq.heappush(queue, (case.order, case.func.__qualname__, index))
+            heapq.heappush(queue, (case.func.__qualname__, index))
 
     ordered: list[AutotestMethodCase] = []
     while queue:
-        _, _, current_index = heapq.heappop(queue)
+        _, current_index = heapq.heappop(queue)
         ordered.append(cases[current_index])
         for dependent_index in edges[current_index]:
             indegree[dependent_index] -= 1
             if indegree[dependent_index] == 0:
-                dependent_case = cases[dependent_index]
                 heapq.heappush(
                     queue,
-                    (dependent_case.order, dependent_case.func.__qualname__, dependent_index),
+                    (cases[dependent_index].func.__qualname__, dependent_index),
                 )
 
     if len(ordered) == len(cases):
@@ -501,13 +510,6 @@ def _required_parameters(method: Callable[..., Any]) -> tuple[str, ...]:
     return tuple(required_arguments)
 
 
-def _validate_order(order: int | None) -> None:
-    if order is None:
-        return
-    if isinstance(order, bool) or not isinstance(order, int):
-        raise TypeError("autotest policy order must be an integer.")
-
-
 def _normalize_depends_on(
     depends_on: Sequence[Callable[..., Any]] | None,
 ) -> tuple[AutotestFunction, ...]:
@@ -524,14 +526,11 @@ def _register_case_policy(
     *,
     parent: type[object] | None,
     target_func: AutotestFunction,
-    order: int | None,
     depends_on: Iterable[AutotestFunction] = (),
 ) -> None:
     current = _CASE_POLICIES.get((parent, target_func), AutotestCasePolicy())
-    resolved_order = current.order if order is None else order
     resolved_depends = tuple(depends_on) if depends_on else current.depends_on
     _CASE_POLICIES[(parent, target_func)] = AutotestCasePolicy(
-        order=resolved_order,
         depends_on=resolved_depends,
     )
 
@@ -588,6 +587,7 @@ async def _resolve_invocation(
     api: object,
     schemashot: Any,
     state: dict[str, Any],
+    typecheck_mode: AutotestTypecheckMode,
 ) -> AutotestInvocation:
     provider = find_autotest_params_provider(case.func, case.parent)
     if provider is None:
@@ -607,7 +607,12 @@ async def _resolve_invocation(
             raw = await cast(Awaitable[Any], raw)
         invocation = _normalize_invocation(raw, case.func)
 
-    _validate_invocation(case.method, case.func, invocation)
+    _validate_invocation(
+        case.method,
+        case.func,
+        invocation,
+        typecheck_mode=typecheck_mode,
+    )
     return invocation
 
 
@@ -631,13 +636,180 @@ def _validate_invocation(
     method: Callable[..., Any],
     func: AutotestFunction,
     invocation: AutotestInvocation,
+    *,
+    typecheck_mode: AutotestTypecheckMode = "off",
 ) -> None:
+    signature = inspect.signature(method)
     try:
-        inspect.signature(method).bind(*invocation.args, **invocation.kwargs)
+        bound_arguments = signature.bind(*invocation.args, **invocation.kwargs)
     except TypeError as error:
         raise TypeError(
             f"Invalid invocation for {func.__qualname__}: {error}"
         ) from error
+    _validate_invocation_types(
+        signature=signature,
+        bound_arguments=bound_arguments.arguments,
+        method=method,
+        func=func,
+        typecheck_mode=typecheck_mode,
+    )
+
+
+def _normalize_typecheck_mode(mode: AutotestTypecheckMode | str) -> AutotestTypecheckMode:
+    if not isinstance(mode, str):
+        raise TypeError("autotest typecheck mode must be a string.")
+    normalized = mode.strip().lower()
+    if normalized not in _VALID_TYPECHECK_MODES:
+        expected = ", ".join(sorted(_VALID_TYPECHECK_MODES))
+        raise ValueError(f"autotest typecheck mode must be one of: {expected}.")
+    return cast(AutotestTypecheckMode, normalized)
+
+
+def _validate_invocation_types(
+    *,
+    signature: inspect.Signature,
+    bound_arguments: Mapping[str, Any],
+    method: Callable[..., Any],
+    func: AutotestFunction,
+    typecheck_mode: AutotestTypecheckMode,
+) -> None:
+    if typecheck_mode == "off":
+        return
+
+    mismatches: list[str] = []
+    for name, value in bound_arguments.items():
+        parameter = signature.parameters.get(name)
+        if parameter is None:
+            continue
+
+        annotation = _resolve_annotation(parameter.annotation, method)
+        if annotation is inspect.Signature.empty:
+            continue
+
+        if _matches_annotation(value, annotation):
+            continue
+
+        expected = _format_annotation(annotation)
+        mismatches.append(
+            f"parameter {name!r} expects {expected}, got {type(value).__name__}"
+        )
+
+    if not mismatches:
+        return
+
+    details = "; ".join(mismatches)
+    message = f"Invalid invocation types for {func.__qualname__}: {details}."
+    if typecheck_mode == "strict":
+        raise TypeError(message)
+    warnings.warn(message, RuntimeWarning, stacklevel=4)
+
+
+def _resolve_annotation(annotation: Any, method: Callable[..., Any]) -> Any:
+    if annotation is inspect.Signature.empty:
+        return annotation
+
+    if not isinstance(annotation, str):
+        return annotation
+
+    globals_dict = getattr(method, "__globals__", {})
+    if not isinstance(globals_dict, dict):
+        return inspect.Signature.empty
+
+    try:
+        return eval(annotation, globals_dict, {})
+    except Exception:
+        return inspect.Signature.empty
+
+
+def _matches_annotation(value: Any, annotation: Any) -> bool:
+    if annotation in (Any, object):
+        return True
+    if annotation in (None, type(None)):
+        return value is None
+
+    supertype = getattr(annotation, "__supertype__", None)
+    if supertype is not None:
+        return _matches_annotation(value, supertype)
+
+    origin = get_origin(annotation)
+    if origin is None:
+        if isinstance(annotation, type):
+            return isinstance(value, annotation)
+        return True
+
+    if origin in (types.UnionType, Union):
+        return any(_matches_annotation(value, arg) for arg in get_args(annotation))
+
+    if origin is Annotated:
+        args = get_args(annotation)
+        if not args:
+            return True
+        return _matches_annotation(value, args[0])
+
+    if origin is Literal:
+        return any(value == option for option in get_args(annotation))
+
+    if origin is list:
+        return _matches_iterable(value, annotation, list)
+    if origin is set:
+        return _matches_iterable(value, annotation, set)
+    if origin is frozenset:
+        return _matches_iterable(value, annotation, frozenset)
+    if origin is tuple:
+        return _matches_tuple(value, annotation)
+    if origin is dict:
+        return _matches_mapping(value, annotation)
+
+    if isinstance(origin, type):
+        return isinstance(value, origin)
+
+    return True
+
+
+def _matches_iterable(value: Any, annotation: Any, container_type: type[object]) -> bool:
+    if not isinstance(value, container_type):
+        return False
+    args = get_args(annotation)
+    if not args:
+        return True
+    item_type = args[0]
+    return all(_matches_annotation(item, item_type) for item in value)
+
+
+def _matches_mapping(value: Any, annotation: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    key_type, value_type = (Any, Any)
+    args = get_args(annotation)
+    if len(args) == 2:
+        key_type, value_type = args
+
+    for key, item in value.items():
+        if not _matches_annotation(key, key_type):
+            return False
+        if not _matches_annotation(item, value_type):
+            return False
+    return True
+
+
+def _matches_tuple(value: Any, annotation: Any) -> bool:
+    if not isinstance(value, tuple):
+        return False
+    args = get_args(annotation)
+    if not args:
+        return True
+    if len(args) == 2 and args[1] is Ellipsis:
+        return all(_matches_annotation(item, args[0]) for item in value)
+    if len(args) != len(value):
+        return False
+    return all(_matches_annotation(item, item_type) for item, item_type in zip(value, args))
+
+
+def _format_annotation(annotation: Any) -> str:
+    try:
+        return inspect.formatannotation(annotation)
+    except Exception:
+        return str(annotation)
 
 
 __all__ = [
@@ -648,6 +820,7 @@ __all__ = [
     "AutotestInvocation",
     "AutotestMethodCase",
     "AutotestCasePolicy",
+    "AutotestTypecheckMode",
     "autotest",
     "autotest_depends_on",
     "autotest_data",

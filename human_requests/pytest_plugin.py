@@ -12,6 +12,8 @@ from .autotest import execute_autotests
 
 _AUTOTEST_TEST_NAME = "test_autotest_api_methods"
 _AUTOTEST_INI_KEY = "autotest_start_class"
+_AUTOTEST_TYPECHECK_INI_KEY = "autotest_typecheck"
+_VALID_TYPECHECK_MODES: frozenset[str] = frozenset({"off", "warn", "strict"})
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -19,6 +21,11 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         _AUTOTEST_INI_KEY,
         default="",
         help="Dotted import path to the root API class, e.g. package_name.StartClass",
+    )
+    parser.addini(
+        _AUTOTEST_TYPECHECK_INI_KEY,
+        default="off",
+        help="Autotest params type checking mode: off, warn, strict.",
     )
 
 
@@ -45,7 +52,14 @@ def pytest_collection_modifyitems(
 
 def _run_autotest_tree_sync(request: pytest.FixtureRequest) -> None:
     api, schemashot = _resolve_runtime_dependencies(request)
-    executed_count = _run_coroutine(execute_autotests(api=api, schemashot=schemashot))
+    typecheck_mode = _get_typecheck_mode(request.config)
+    executed_count = _run_coroutine(
+        execute_autotests(
+            api=api,
+            schemashot=schemashot,
+            typecheck_mode=typecheck_mode,
+        )
+    )
     if executed_count == 0:
         pytest.skip("No methods marked with @autotest were found in the api tree.")
 
@@ -54,9 +68,10 @@ def _run_autotest_tree_sync(request: pytest.FixtureRequest) -> None:
 def _run_autotest_tree_anyio(request: pytest.FixtureRequest) -> None:
     runner = request.getfixturevalue("_autotest_anyio_runner")
     api, schemashot = _resolve_runtime_dependencies(request)
+    typecheck_mode = _get_typecheck_mode(request.config)
     executed_count = runner.run_test(
         _execute_autotests_async,
-        {"api": api, "schemashot": schemashot},
+        {"api": api, "schemashot": schemashot, "typecheck_mode": typecheck_mode},
     )
     if executed_count == 0:
         pytest.skip("No methods marked with @autotest were found in the api tree.")
@@ -86,6 +101,19 @@ def _resolve_runtime_dependencies(request: pytest.FixtureRequest) -> tuple[objec
 
 def _get_start_class_path(config: pytest.Config) -> str:
     return str(config.getini(_AUTOTEST_INI_KEY)).strip()
+
+
+def _get_typecheck_mode(config: pytest.Config) -> str:
+    raw = str(config.getini(_AUTOTEST_TYPECHECK_INI_KEY)).strip().lower()
+    if not raw:
+        return "off"
+    if raw in _VALID_TYPECHECK_MODES:
+        return raw
+
+    expected = ", ".join(sorted(_VALID_TYPECHECK_MODES))
+    raise pytest.UsageError(
+        f"Invalid {_AUTOTEST_TYPECHECK_INI_KEY} value {raw!r}. Expected one of: {expected}."
+    )
 
 
 def _import_start_class(dotted_path: str) -> type[Any]:
@@ -137,8 +165,16 @@ def _autotest_anyio_runner(anyio_backend: Any) -> Any:
         yield runner
 
 
-async def _execute_autotests_async(api: object, schemashot: Any) -> int:
-    return await execute_autotests(api=api, schemashot=schemashot)
+async def _execute_autotests_async(
+    api: object,
+    schemashot: Any,
+    typecheck_mode: str,
+) -> int:
+    return await execute_autotests(
+        api=api,
+        schemashot=schemashot,
+        typecheck_mode=typecheck_mode,
+    )
 
 
 def _run_coroutine(coro: Awaitable[Any]) -> Any:
