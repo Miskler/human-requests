@@ -117,6 +117,51 @@ print(fingerprint.user_agent)
 print(fingerprint.browser_name, fingerprint.browser_version)
 ```
 
+## API Tree Boilerplate Helper
+
+To avoid repetitive `_parent` and `__post_init__` wiring in SDK-style clients
+(like `fixprice_api` / `perekrestok_api`), use:
+
+- `ApiChild[ParentType]`
+- `ApiParent`
+- `api_child_field(...)`
+
+```python
+from dataclasses import dataclass
+from human_requests import ApiChild, ApiParent, api_child_field
+
+
+class ClassCatalog(ApiChild["ShopApi"]):
+    async def tree(self):
+        ...
+
+
+class ClassGeolocation(ApiChild["ShopApi"]):
+    async def cities_list(self):
+        ...
+
+
+@dataclass
+class ShopApi(ApiParent):
+    Catalog: ClassCatalog = api_child_field(ClassCatalog)
+    Geolocation: ClassGeolocation = api_child_field(ClassGeolocation)
+```
+
+`ApiParent` initializes all `api_child_field(...)` values in `__post_init__`
+automatically, so manual assignments are no longer needed.
+
+Nested chains are supported as well (`Root -> Child -> Child`):
+
+```python
+@dataclass
+class BranchApi(ApiChild["RootApi"], ApiParent):
+    Catalog: ClassCatalog = api_child_field(ClassCatalog)
+
+@dataclass
+class RootApi(ApiParent):
+    Branch: BranchApi = api_child_field(BranchApi)
+```
+
 ## API Autotest Addon (pytest)
 
 `human-requests` ships with a pytest plugin that can auto-run API methods marked with `@autotest` and validate payloads via `schemashot` from `pytest-jsonschema-snapshot`.

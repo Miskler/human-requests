@@ -110,6 +110,46 @@ normalized runtime/browser fingerprint snapshot.
     print(fp.browser_name, fp.browser_version)
 
 
+API Tree Boilerplate Helper
+---------------------------
+
+For SDK-like API trees you can avoid repetitive parent wiring with
+``ApiChild``, ``ApiParent`` and ``api_child_field``.
+
+.. code-block:: python
+
+    from dataclasses import dataclass
+    from human_requests import ApiChild, ApiParent, api_child_field
+
+    class ClassCatalog(ApiChild["ShopApi"]):
+        async def tree(self):
+            ...
+
+    class ClassGeolocation(ApiChild["ShopApi"]):
+        async def cities_list(self):
+            ...
+
+    @dataclass
+    class ShopApi(ApiParent):
+        Catalog: ClassCatalog = api_child_field(ClassCatalog)
+        Geolocation: ClassGeolocation = api_child_field(ClassGeolocation)
+
+``ApiParent`` initializes all ``api_child_field(...)`` attributes in
+``__post_init__`` automatically.
+
+Nested chains are also supported (``Root -> Child -> Child``):
+
+.. code-block:: python
+
+    @dataclass
+    class BranchApi(ApiChild["RootApi"], ApiParent):
+        Catalog: ClassCatalog = api_child_field(ClassCatalog)
+
+    @dataclass
+    class RootApi(ApiParent):
+        Branch: BranchApi = api_child_field(BranchApi)
+
+
 See Also
 --------
 
