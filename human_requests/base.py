@@ -81,7 +81,7 @@ def _create_child(child_factory: Callable[[Any], Any], parent: Any) -> Any:
         accepts_parent = True
 
     child = child_factory(parent) if accepts_parent else child_factory()
-    if isinstance(child, ApiChild):
+    if not accepts_parent and isinstance(child, ApiChild):
         child._parent = parent
     return child
 
