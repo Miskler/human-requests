@@ -31,11 +31,19 @@ dependencies = [
     "selectolax"
 ]
 
+[project.optional-dependencies]
+autotest = [
+    "pytest-jsonschema-snapshot"
+]
+
 [project.urls]
 Homepage = "https://github.com/Miskler/human-requests"
 Repository = "https://github.com/Miskler/human-requests"
 Documentation = "https://miskler.github.io/human-requests/basic/quick_start/index.html"
 Issues = "https://github.com/Miskler/human-requests/issues"
+
+[project.entry-points.pytest11]
+human_requests_autotest = "human_requests.pytest_plugin"
 
 [tool.setuptools.dynamic]
 version = {attr = "human_requests.__version__"}
