@@ -252,13 +252,18 @@ class HumanPage(Page):
         redirect: Literal["follow", "error", "manual"] = "follow",
         referrer: Optional[str] = None,
         timeout_ms: int = 30000,
+        retry: int = 2,
     ) -> FetchResponse:
         """
         Тонкая прослойка над JS fetch: выполняет запрос внутри страницы и возвращает ResponseModel.
         • Без route / wait_for_event.
         • raw — ВСЕГДА распакованные байты (если тело доступно JS).
         • При opaque-ответе тело/заголовки могут быть недоступны — это ограничение CORS.
+        • `retry` повторяет запрос только при timeout (AbortController по timeout_ms).
         """
+        if retry < 0:
+            raise ValueError("retry must be >= 0")
+
         declared_headers = {k.lower(): v for k, v in (headers or {}).items()}
         js_headers = {k: v for k, v in declared_headers.items() if k != "referer"}
         js_ref = referrer or declared_headers.get("referer")
@@ -273,22 +278,27 @@ class HumanPage(Page):
         _JS_PATH = Path(__file__).parent / "fetch.js"
         JS_FETCH = _JS_PATH.read_text(encoding="utf-8")
 
-        result = await self.evaluate(
-            JS_FETCH,
-            dict(
-                url=url,
-                method=method.value,
-                headers=js_headers or {},
-                body=js_body,
-                credentials=credentials,
-                mode=mode,
-                redirect=redirect,
-                ref=js_ref,
-                timeoutMs=timeout_ms,
-            ),
+        eval_payload = dict(
+            url=url,
+            method=method.value,
+            headers=js_headers or {},
+            body=js_body,
+            credentials=credentials,
+            mode=mode,
+            redirect=redirect,
+            ref=js_ref,
+            timeoutMs=timeout_ms,
         )
 
-        if not result.get("ok"):
+        attempts_left = retry
+        result: Any
+        while True:
+            result = await self.evaluate(JS_FETCH, eval_payload)
+            if result.get("ok"):
+                break
+            if result.get("isTimeout") and attempts_left > 0:
+                attempts_left -= 1
+                continue
             raise RuntimeError(f"fetch failed: {result.get('error')}")
 
         # bytes в raw: распакованные (если body доступен)

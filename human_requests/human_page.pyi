@@ -65,6 +65,7 @@ class HumanPage(Page):
         redirect: Literal["follow", "error", "manual"] = "follow",
         referrer: Optional[str] = None,
         timeout_ms: int = 30000,
+        retry: int = 2,
     ) -> FetchResponse: ...
     @property
     def origin(self) -> str: ...

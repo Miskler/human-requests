@@ -1,6 +1,10 @@
 async ({ url, method, headers, body, credentials, mode, redirect, ref, timeoutMs }) => {
     const ctrl = new AbortController();
-    const id = setTimeout(() => ctrl.abort("timeout"), timeoutMs);
+    let isTimeout = false;
+    const id = setTimeout(() => {
+        isTimeout = true;
+        ctrl.abort("timeout");
+    }, timeoutMs);
     try {
         const init = { method, headers, credentials, mode, redirect, signal: ctrl.signal };
         if (ref) init.referrer = ref;
@@ -42,7 +46,7 @@ async ({ url, method, headers, body, credentials, mode, redirect, ref, timeoutMs
             bodyB64,                 // base64 распакованных байтов или null
         };
     } catch (e) {
-        return { ok: false, error: String(e) };
+        return { ok: false, error: String(e), isTimeout };
     } finally {
         clearTimeout(id);
     }
