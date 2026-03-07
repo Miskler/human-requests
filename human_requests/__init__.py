@@ -26,4 +26,4 @@ __all__ = [
     "autotest_params",
 ]
 
-__version__ = "0.1.8"
+__version__ = "0.1.9"

@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 
 @dataclass
-@auto_wrap_methods(decorator=make_screenshot, exclude={"replace"})
+@auto_wrap_methods(decorator=make_screenshot)
 class HumanPage(Page):
     """
     A thin, type-compatible wrapper over Playwright's Page.

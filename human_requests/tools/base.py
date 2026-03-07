@@ -1,3 +1,4 @@
+import inspect
 from functools import wraps
 from typing import Any, Awaitable, Callable, Type, TypeVar
 
@@ -25,30 +26,22 @@ def make_screenshot(method: F) -> F:
     return wrapper  # type: ignore[return-value]
 
 
-def auto_wrap_methods(decorator: Callable, exclude: set[str] | None = None) -> Callable[[T], T]:
+def auto_wrap_methods(decorator: Callable) -> Callable[[T], T]:
     """
-    Фабрика декораторов класса. Применяет декоратор ко всем методам класса,
-    кроме указанных в exclude и магических методов.
-
-    Args:
-        decorator: Декоратор для методов.
-        exclude: Множество имён методов, которые не нужно оборачивать.
-
-    Returns:
-        Декоратор класса.
+    Фабрика декораторов класса. Применяет декоратор только к асинхронным методам класса,
+    кроме магических методов. Синхронные методы не оборачиваются.
     """
-    exclude_names = exclude or set()
 
     def class_decorator(cls: T) -> T:
         for attr_name in dir(cls):
             # Пропускаем магические методы
             if attr_name.startswith("__") and attr_name.endswith("__"):
                 continue
-            # Пропускаем явно исключённые
-            if attr_name in exclude_names:
-                continue
             attr = getattr(cls, attr_name)
             if not callable(attr):
+                continue
+            # Оборачиваем ТОЛЬКО асинхронные методы
+            if not inspect.iscoroutinefunction(attr):
                 continue
             # Если метод уже обёрнут (имеет __wrapped__), пропускаем
             if hasattr(attr, "__wrapped__"):
