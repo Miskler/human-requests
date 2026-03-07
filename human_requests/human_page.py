@@ -17,13 +17,14 @@ from typing_extensions import override
 from .abstraction.http import URL, HttpMethod
 from .abstraction.request import FetchRequest
 from .abstraction.response import FetchResponse
-from .tools import make_screenshot
+from .tools import auto_wrap_methods, make_screenshot
 
 if TYPE_CHECKING:
     from .human_context import HumanContext
 
 
 @dataclass
+@auto_wrap_methods(decorator=make_screenshot, exclude={"replace"})
 class HumanPage(Page):
     """
     A thin, type-compatible wrapper over Playwright's Page.
@@ -52,7 +53,6 @@ class HumanPage(Page):
     # ---------- lifecycle / sync ----------
 
     @override
-    @make_screenshot
     async def goto(
         self,
         url: str,
@@ -131,7 +131,6 @@ class HumanPage(Page):
             if last_err is not None:
                 raise last_err
 
-    @make_screenshot
     async def goto_render(self, first, /, **goto_kwargs) -> Optional[PWResponse]:
         """
         Перехватывает первый навигационный запрос main-frame к target_url и
@@ -246,7 +245,6 @@ class HumanPage(Page):
 
         return res
 
-    @make_screenshot
     async def fetch(
         self,
         url: str,
