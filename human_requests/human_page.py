@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Literal, Optional, cast
 from urllib.parse import urlsplit
@@ -16,16 +17,19 @@ from typing_extensions import override
 from .abstraction.http import URL, HttpMethod
 from .abstraction.request import FetchRequest
 from .abstraction.response import FetchResponse
+from .tools import make_screenshot
 
 if TYPE_CHECKING:
     from .human_context import HumanContext
 
 
+@dataclass
 class HumanPage(Page):
     """
     A thin, type-compatible wrapper over Playwright's Page.
     """
 
+    on_error_screenshot_path: str = ""
     # ---------- core identity ----------
 
     @property
@@ -48,6 +52,7 @@ class HumanPage(Page):
     # ---------- lifecycle / sync ----------
 
     @override
+    @make_screenshot
     async def goto(
         self,
         url: str,
@@ -126,6 +131,7 @@ class HumanPage(Page):
             if last_err is not None:
                 raise last_err
 
+    @make_screenshot
     async def goto_render(self, first, /, **goto_kwargs) -> Optional[PWResponse]:
         """
         Перехватывает первый навигационный запрос main-frame к target_url и
@@ -240,6 +246,7 @@ class HumanPage(Page):
 
         return res
 
+    @make_screenshot
     async def fetch(
         self,
         url: str,

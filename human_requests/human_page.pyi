@@ -10,6 +10,8 @@ from .abstraction import FetchResponse, HttpMethod
 from .human_context import HumanContext
 
 class HumanPage(Page):
+    on_error_screenshot_path: str
+
     @property
     def context(self) -> "HumanContext": ...
     @staticmethod

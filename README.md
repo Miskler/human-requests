@@ -100,6 +100,11 @@ challenge = await page.fetch("https://example.com/challenge")
 await page.goto_render(challenge, wait_until="networkidle")
 ```
 
+### Auto Screenshot on Handler Failure
+
+If you want a screenshot to be taken when errors like `playwright.Error` (including timeouts) occur,
+you can set `page.on_error_screenshot_path = "screenshot.png"` (this setting is page-specific; by default, screenshots are disabled).
+
 ### State helpers
 
 ```python
