@@ -20,12 +20,7 @@ class HumanPage(Page):
     async def goto(
         self,
         url: str,
-        *,
-        retry: Optional[int] = ...,
-        on_retry: Optional[Callable[[], Awaitable[None]]] = ...,
-        timeout: Optional[float] = ...,
-        wait_until: Optional[Literal["commit", "domcontentloaded", "load", "networkidle"]] = ...,
-        referer: Optional[str] = ...,
+        *args: Any,
         **kwargs: Any,
     ) -> PWResponse | None: ...
     @overload
