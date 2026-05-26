@@ -15,7 +15,7 @@ from selectolax.parser import HTMLParser
 from typing_extensions import override
 
 from .abstraction.http import URL, HttpMethod
-from .abstraction.output import loads_json_debug
+from .abstraction.json_debug import loads_json_debug
 from .abstraction.request import FetchRequest
 from .abstraction.response import FetchResponse
 from .tools import auto_wrap_methods, make_screenshot

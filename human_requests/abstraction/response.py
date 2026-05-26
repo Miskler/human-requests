@@ -5,7 +5,7 @@ from time import time
 from typing import TYPE_CHECKING, Literal, Optional
 
 from .http import URL
-from .output import loads_json_debug
+from .json_debug import loads_json_debug
 from .request import FetchRequest
 
 if TYPE_CHECKING:
