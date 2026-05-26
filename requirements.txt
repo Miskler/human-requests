@@ -1,6 +1,8 @@
 playwright
+Pillow
 ua-parser[regex]
 selectolax
+rich
 camoufox
 
 pytest

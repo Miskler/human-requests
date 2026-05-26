@@ -1,9 +1,11 @@
-import json
+from __future__ import annotations
+
 from dataclasses import dataclass
 from time import time
 from typing import TYPE_CHECKING, Literal, Optional
 
 from .http import URL
+from .output import loads_json_debug
 from .request import FetchRequest
 
 if TYPE_CHECKING:
@@ -55,7 +57,7 @@ class FetchResponse:
         return self.raw.decode(charset, errors="replace")
 
     def json(self) -> dict | list:
-        to_return = json.loads(self.text)
+        to_return = loads_json_debug(self.text)
         assert isinstance(to_return, list) or isinstance(
             to_return, dict
         ), f"Response body is not JSON: {type(self.text).__name__}"

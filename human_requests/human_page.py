@@ -15,6 +15,7 @@ from selectolax.parser import HTMLParser
 from typing_extensions import override
 
 from .abstraction.http import URL, HttpMethod
+from .abstraction.output import loads_json_debug
 from .abstraction.request import FetchRequest
 from .abstraction.response import FetchResponse
 from .tools import auto_wrap_methods, make_screenshot
@@ -401,7 +402,7 @@ class HumanPage(Page):
         if node is None:
             raise RuntimeError("Содержимое страницы не является json-контейнером")
 
-        return json.loads(node.text())
+        return loads_json_debug(node.text())
 
     def __repr__(self) -> str:
         return f"<HumanPage wrapping {super().__repr__()!r}>"
