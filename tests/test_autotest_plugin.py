@@ -875,7 +875,7 @@ def test_plugin_typecheck_strict_fails_on_annotation_mismatch(pytester: pytest.P
     assert "short test summary info" in stdout
     assert "StartClass.typed" in stdout
     assert "TypeError" in stdout
-    assert "Invalid ..." in stdout
+    assert "Invalid invocation types for StartClass.typed" in stdout
 
 
 def test_plugin_reports_params_provider_crash(pytester: pytest.Pytester) -> None:
