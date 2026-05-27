@@ -44,6 +44,30 @@ _PrimitiveTypes = (str, bytes, bytearray, bool, int, float, complex, range, memo
 F = TypeVar("F", bound=Callable[..., Any])
 
 
+def _format_autotest_object_type(value: Any) -> str:
+    value_type = type(value)
+    module = value_type.__module__
+    qualname = value_type.__qualname__
+    if module == "builtins":
+        return qualname
+    return f"{module}.{qualname}"
+
+
+def _format_autotest_wrong_object_message(response: Any) -> str:
+    return (
+        "The method completed successfully, but autotest expected the returned "
+        "human_requests.abstraction.Output object. Instead it received "
+        f"{_format_autotest_object_type(response)}."
+    )
+
+
+def _format_autotest_invalid_json_message() -> str:
+    return (
+        "The method completed successfully, but the returned "
+        "human_requests.abstraction.Output object contains invalid JSON."
+    )
+
+
 @dataclass(frozen=True)
 class AutotestContext:
     api: object
@@ -465,21 +489,34 @@ async def execute_autotest_case(
     hook = find_autotest_hook(case.func, case.parent)
     if hook is not None:
         response_json_error: BaseException | None = None
+        response_json_detail_message: str | None = None
         try:
             if not hasattr(response, "json") or not callable(response.json):
-                raise TypeError(
+                response_json_error = TypeError(
                     f"Autotest method {case.func.__qualname__} must return an object with json()."
                 )
-            data = response.json()
+                response_json_detail_message = _format_autotest_wrong_object_message(response)
+            else:
+                data = response.json()
         except BaseException as error:  # pragma: no cover - runtime-only branch for crash reporting
             if isinstance(error, (KeyboardInterrupt, SystemExit)):
                 raise
             if _is_pytest_skip_exception(error):
                 raise
             response_json_error = error
+            response_json_detail_message = _format_autotest_invalid_json_message()
 
         if response_json_error is not None:
-            raise_autotest_hook_crash(api=api, hook=hook, error=response_json_error)
+            raise_autotest_hook_crash(
+                api=api,
+                hook=hook,
+                error=response_json_error,
+                summary_message="Autotest hook preparation crashed",
+                subject_label="Method",
+                subject_value=case.func.__qualname__,
+                source_func=case.func,
+                detail_message=response_json_detail_message,
+            )
 
         hook_error: BaseException | None = None
         hook_result: Any = None
@@ -499,21 +536,31 @@ async def execute_autotest_case(
             data = hook_result
     else:
         response_json_error: BaseException | None = None
+        response_json_detail_message: str | None = None
         try:
             if not hasattr(response, "json") or not callable(response.json):
-                raise TypeError(
+                response_json_error = TypeError(
                     f"Autotest method {case.func.__qualname__} must return an object with json()."
                 )
-            data = response.json()
+                response_json_detail_message = _format_autotest_wrong_object_message(response)
+            else:
+                data = response.json()
         except BaseException as error:  # pragma: no cover - runtime-only branch for crash reporting
             if isinstance(error, (KeyboardInterrupt, SystemExit)):
                 raise
             if _is_pytest_skip_exception(error):
                 raise
             response_json_error = error
+            response_json_detail_message = _format_autotest_invalid_json_message()
 
         if response_json_error is not None:
-            raise_autotest_method_crash(api=api, func=case.func, error=response_json_error)
+            raise_autotest_method_crash(
+                api=api,
+                func=case.func,
+                error=response_json_error,
+                source_func=case.func,
+                detail_message=response_json_detail_message,
+            )
 
     schemashot.assert_json_match(data, case.func)
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import inspect
 import io
 import linecache
 import sys
@@ -11,6 +12,7 @@ from typing import Any, Callable, NoReturn
 
 from rich.console import Console
 from rich.syntax import Syntax
+from rich.text import Text
 from _pytest._code.code import ReprExceptionInfo
 from _pytest._code.code import ReprFileLocation
 from _pytest._code.code import ReprTracebackNative
@@ -21,15 +23,32 @@ AutotestFunction = Callable[..., Any]
 @dataclass(frozen=True)
 class AutotestCrashData:
     summary_message: str
+    detail_message: str
     report: str
     source_path: str
     source_lineno: int
+
+
+@dataclass(frozen=True)
+class AutotestSourceLocation:
+    filename: str
+    lineno: int
+
+
+@dataclass(frozen=True)
+class AutotestPanelRow:
+    label: str
+    value: str
+    label_style: str | None = None
+    value_style: str | None = None
+    value_highlights: tuple[tuple[str, str], ...] = ()
 
 
 class AutotestCrash(RuntimeError):
     def __init__(self, data: AutotestCrashData) -> None:
         super().__init__(data.summary_message)
         self.summary_message = data.summary_message
+        self.detail_message = data.detail_message
         self.report = data.report
         self.source_path = data.source_path
         self.source_lineno = data.source_lineno
@@ -92,6 +111,8 @@ def raise_autotest_method_crash(
     api: object,
     func: AutotestFunction,
     error: BaseException,
+    source_func: AutotestFunction | None = None,
+    detail_message: str | None = None,
 ) -> NoReturn:
     raise AutotestMethodCrash(
         _build_autotest_crash_data(
@@ -101,6 +122,8 @@ def raise_autotest_method_crash(
             subject_value=getattr(func, "__qualname__", repr(func)),
             error=error,
             context_lines=3,
+            source_func=source_func,
+            detail_message=detail_message,
         )
     )
 
@@ -110,15 +133,22 @@ def raise_autotest_hook_crash(
     api: object,
     hook: AutotestFunction,
     error: BaseException,
+    summary_message: str = "Autotest hook crashed",
+    subject_label: str = "Hook",
+    subject_value: str | None = None,
+    source_func: AutotestFunction | None = None,
+    detail_message: str | None = None,
 ) -> NoReturn:
     raise AutotestHookCrash(
         _build_autotest_crash_data(
             api=api,
-            title="Autotest hook crashed",
-            subject_label="Hook",
-            subject_value=getattr(hook, "__qualname__", repr(hook)),
+            title=summary_message,
+            subject_label=subject_label,
+            subject_value=subject_value or getattr(hook, "__qualname__", repr(hook)),
             error=error,
             context_lines=3,
+            source_func=source_func,
+            detail_message=detail_message,
         )
     )
 
@@ -131,14 +161,38 @@ def _build_autotest_crash_data(
     subject_value: str,
     error: BaseException,
     context_lines: int,
+    source_func: AutotestFunction | None = None,
+    detail_message: str | None = None,
 ) -> AutotestCrashData:
     code_root = _resolve_code_root(api)
     frame = _select_source_frame(error.__traceback__, code_root)
+    if source_func is not None:
+        source_frame = _source_location_from_callable(source_func)
+        if source_frame is not None:
+            frame = source_frame
 
     rows = [
-        (subject_label, subject_value),
-        ("Error", error.__class__.__name__),
-        ("Message", _format_error_message(error)),
+        AutotestPanelRow(
+            label=subject_label,
+            value=subject_value,
+            label_style="bold cyan",
+            value_style="green",
+        ),
+        AutotestPanelRow(
+            label="Error",
+            value=error.__class__.__name__,
+            label_style="bold cyan",
+            value_style="yellow",
+        ),
+        AutotestPanelRow(
+            label="Message",
+            value=detail_message or _format_error_message(error),
+            label_style="bold cyan",
+            value_style="white",
+            value_highlights=(
+                ("human_requests.abstraction.Output", "bold magenta"),
+            ),
+        ),
     ]
 
     lines = _render_panel(title, rows)
@@ -149,6 +203,7 @@ def _build_autotest_crash_data(
         lines.append("<source unavailable>")
         return AutotestCrashData(
             summary_message=title,
+            detail_message=detail_message or _format_error_message(error),
             report="\n".join(lines),
             source_path="<source unavailable>",
             source_lineno=0,
@@ -160,6 +215,7 @@ def _build_autotest_crash_data(
     lines.extend(_render_source_excerpt(frame, context_lines=context_lines))
     return AutotestCrashData(
         summary_message=title,
+        detail_message=detail_message or _format_error_message(error),
         report="\n".join(lines),
         source_path=source_path,
         source_lineno=frame.lineno,
@@ -213,6 +269,18 @@ def _select_source_frame(
     return frames[-1]
 
 
+def _source_location_from_callable(func: AutotestFunction) -> AutotestSourceLocation | None:
+    try:
+        source_file = inspect.getsourcefile(func) or inspect.getfile(func)
+        _, lineno = inspect.getsourcelines(func)
+    except (OSError, TypeError):
+        return None
+
+    if not source_file:
+        return None
+    return AutotestSourceLocation(filename=str(Path(source_file).resolve()), lineno=lineno)
+
+
 def _is_within_root(filename: str, code_root: Path) -> bool:
     if filename.startswith("<") and filename.endswith(">"):
         return False
@@ -255,6 +323,12 @@ def _render_source_excerpt(frame: Any, *, context_lines: int) -> list[str]:
     error_line_index = max(frame.lineno - 1, 0)
     start = max(error_line_index - context_lines, 0)
     end = min(error_line_index + context_lines + 1, len(lines))
+
+    while start < end and not lines[start].strip():
+        start += 1
+    while end > start and not lines[end - 1].strip():
+        end -= 1
+
     line_no_width = len(str(end))
 
     rendered: list[str] = []
@@ -309,10 +383,21 @@ def _highlight_python_source_line(source_line: str) -> str:
     return buffer.getvalue().rstrip("\r\n")
 
 
-def _render_panel(title: str, rows: list[tuple[str, str]]) -> list[str]:
-    label_width = max(len(label) for label, _ in rows)
-    row_texts = [f"{label:<{label_width}}  {value}" for label, value in rows]
-    body_width = max(len(row) for row in row_texts)
+def _render_panel(title: str, rows: list[AutotestPanelRow]) -> list[str]:
+    label_width = max(len(row.label) for row in rows)
+    rendered_rows: list[tuple[int, str]] = []
+    for row in rows:
+        rendered_label = _render_styled_text(row.label, style=row.label_style)
+        rendered_label += " " * (label_width - len(row.label))
+        rendered_value = _render_styled_text(
+            row.value,
+            style=row.value_style,
+            highlights=row.value_highlights,
+        )
+        visible_length = label_width + 2 + len(row.value)
+        rendered_rows.append((visible_length, f"{rendered_label}  {rendered_value}"))
+
+    body_width = max(visible_length for visible_length, _ in rendered_rows)
     panel_inner_width = body_width + 2
 
     if len(title) + 2 > panel_inner_width:
@@ -326,7 +411,38 @@ def _render_panel(title: str, rows: list[tuple[str, str]]) -> list[str]:
     lines = [
         f"╭{'─' * left_padding} {title} {'─' * right_padding}╮",
     ]
-    for row in row_texts:
-        lines.append(f"│ {row.ljust(body_width)} │")
+    for visible_length, rendered_row in rendered_rows:
+        lines.append(f"│ {rendered_row}{' ' * (body_width - visible_length)} │")
     lines.append(f"╰{'─' * panel_inner_width}╯")
     return lines
+
+
+def _render_styled_text(
+    text: str,
+    *,
+    style: str | None = None,
+    highlights: tuple[tuple[str, str], ...] = (),
+) -> str:
+    if style is None and not highlights:
+        return text
+
+    rich_text = Text(text, style=style)
+    for needle, highlight_style in highlights:
+        start = 0
+        while True:
+            index = rich_text.plain.find(needle, start)
+            if index == -1:
+                break
+            rich_text.stylize(highlight_style, index, index + len(needle))
+            start = index + len(needle)
+
+    buffer = io.StringIO()
+    console = Console(
+        file=buffer,
+        force_terminal=True,
+        color_system="standard",
+        legacy_windows=False,
+        width=max(len(text) + 4, 24),
+    )
+    console.print(rich_text, end="")
+    return buffer.getvalue().rstrip("\r\n")
