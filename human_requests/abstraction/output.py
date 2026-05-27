@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from io import BytesIO
 from time import time
@@ -118,9 +119,30 @@ class Output:
         response: "PWResponse",
         *,
         page: Any | None = None,
+        json_override: Any | None = None,
+        text_override: str | bytes | bytearray | memoryview | None = None,
     ) -> "Output":
-        raw = await response.body()
+        """Build an Output from a Playwright response.
+
+        json_override and text_override let callers replace the response body
+        with data obtained outside the Playwright response object while keeping
+        response metadata intact.
+        """
+        if json_override is not None and text_override is not None:
+            raise ValueError("json_override and text_override are mutually exclusive")
+
         headers = await response.all_headers()
+        if json_override is not None:
+            raw = json.dumps(json_override, ensure_ascii=False).encode("utf-8")
+            headers = dict(headers)
+            headers["content-type"] = "application/json; charset=utf-8"
+        elif text_override is not None:
+            raw = _coerce_bytes(text_override)
+            headers = dict(headers)
+            headers["content-type"] = "text/plain; charset=utf-8"
+        else:
+            raw = await response.body()
+
         return cls(
             raw=raw,
             headers=headers,
