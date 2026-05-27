@@ -19,6 +19,9 @@ from typing import (
     get_origin,
 )
 
+from .autotest_report import raise_autotest_hook_crash
+from .autotest_report import raise_autotest_method_crash
+
 AutotestFunction = Callable[..., Any]
 AutotestHook = Callable[[Any, Any, "AutotestContext"], Any]
 AutotestParamProvider = Callable[["AutotestCallContext"], Any]
@@ -428,6 +431,7 @@ async def execute_autotest_case(
     _validate_schemashot(schemashot)
     resolved_typecheck_mode = _normalize_typecheck_mode(typecheck_mode)
     runtime_state = state if state is not None else {}
+    crash_error: BaseException | None = None
     invocation = await _resolve_invocation(
         case=case,
         api=api,
@@ -436,14 +440,18 @@ async def execute_autotest_case(
         typecheck_mode=resolved_typecheck_mode,
     )
 
-    response = await _invoke_method(case.method, case.func, invocation)
+    try:
+        response = await _invoke_method(case.method, case.func, invocation)
+    except BaseException as error:  # pragma: no cover - runtime-only branch for crash reporting
+        if isinstance(error, (KeyboardInterrupt, SystemExit)):
+            raise
+        if _is_pytest_skip_exception(error):
+            raise
+        crash_error = error
 
-    if not hasattr(response, "json") or not callable(response.json):
-        raise TypeError(
-            f"Autotest method {case.func.__qualname__} must return an object with json()."
-        )
+    if crash_error is not None:
+        raise_autotest_method_crash(api=api, func=case.func, error=crash_error)
 
-    data = response.json()
     ctx = AutotestContext(
         api=api,
         owner=case.owner,
@@ -456,11 +464,56 @@ async def execute_autotest_case(
 
     hook = find_autotest_hook(case.func, case.parent)
     if hook is not None:
-        hook_result = hook(response, data, ctx)
-        if inspect.isawaitable(hook_result):
-            hook_result = await hook_result
+        response_json_error: BaseException | None = None
+        try:
+            if not hasattr(response, "json") or not callable(response.json):
+                raise TypeError(
+                    f"Autotest method {case.func.__qualname__} must return an object with json()."
+                )
+            data = response.json()
+        except BaseException as error:  # pragma: no cover - runtime-only branch for crash reporting
+            if isinstance(error, (KeyboardInterrupt, SystemExit)):
+                raise
+            if _is_pytest_skip_exception(error):
+                raise
+            response_json_error = error
+
+        if response_json_error is not None:
+            raise_autotest_hook_crash(api=api, hook=hook, error=response_json_error)
+
+        hook_error: BaseException | None = None
+        hook_result: Any = None
+        try:
+            hook_result = hook(response, data, ctx)
+            if inspect.isawaitable(hook_result):
+                hook_result = await hook_result
+        except BaseException as error:  # pragma: no cover - runtime-only branch for crash reporting
+            if isinstance(error, (KeyboardInterrupt, SystemExit)):
+                raise
+            if _is_pytest_skip_exception(error):
+                raise
+            hook_error = error
+        if hook_error is not None:
+            raise_autotest_hook_crash(api=api, hook=hook, error=hook_error)
         if hook_result is not None:
             data = hook_result
+    else:
+        response_json_error: BaseException | None = None
+        try:
+            if not hasattr(response, "json") or not callable(response.json):
+                raise TypeError(
+                    f"Autotest method {case.func.__qualname__} must return an object with json()."
+                )
+            data = response.json()
+        except BaseException as error:  # pragma: no cover - runtime-only branch for crash reporting
+            if isinstance(error, (KeyboardInterrupt, SystemExit)):
+                raise
+            if _is_pytest_skip_exception(error):
+                raise
+            response_json_error = error
+
+        if response_json_error is not None:
+            raise_autotest_method_crash(api=api, func=case.func, error=response_json_error)
 
     schemashot.assert_json_match(data, case.func)
 
@@ -659,15 +712,11 @@ def _initialize_runtime_state() -> tuple[
 
 
 def _subtest_label_for_case(case: AutotestMethodCase) -> dict[str, str]:
-    parent_name = "None" if case.parent is None else type(case.parent).__name__
-    return {
-        "method": case.func.__qualname__,
-        "parent": parent_name,
-    }
+    return {"msg": case.func.__qualname__}
 
 
 def _subtest_label_for_data(case: AutotestDataCase) -> dict[str, str]:
-    return {"data": _snapshot_name_repr(case.name)}
+    return {"msg": _snapshot_name_repr(case.name)}
 
 
 def _snapshot_name_repr(name: object) -> str:
