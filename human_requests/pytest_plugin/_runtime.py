@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Coroutine
-from typing import Any, TypeVar
+from typing import Any, Callable, TypeVar
 
 import pytest
 
@@ -19,6 +19,7 @@ def run_autotest_tree_sync(request: pytest.FixtureRequest) -> None:
     trace_limit = get_trace_limit(request.config)
     truncation_context_lines = get_truncation_context_lines(request.config)
     subtests = _resolve_subtests_fixture(request)
+    case_status_recorder = _resolve_case_status_recorder(request)
     success_recorder = _resolve_success_recorder(request)
     executed_count = run_coroutine(
         _execute_autotests_async(
@@ -28,6 +29,7 @@ def run_autotest_tree_sync(request: pytest.FixtureRequest) -> None:
             trace_limit=trace_limit,
             truncation_context_lines=truncation_context_lines,
             subtests=subtests,
+            case_status_recorder=case_status_recorder,
             success_recorder=success_recorder,
         )
     )
@@ -43,6 +45,7 @@ def run_autotest_tree_anyio(request: pytest.FixtureRequest) -> None:
     trace_limit = get_trace_limit(request.config)
     truncation_context_lines = get_truncation_context_lines(request.config)
     subtests = _resolve_subtests_fixture(request)
+    case_status_recorder = _resolve_case_status_recorder(request)
     success_recorder = _resolve_success_recorder(request)
     executed_count = runner.run_test(
         _execute_autotests_async,
@@ -53,6 +56,7 @@ def run_autotest_tree_anyio(request: pytest.FixtureRequest) -> None:
             "trace_limit": trace_limit,
             "truncation_context_lines": truncation_context_lines,
             "subtests": subtests,
+            "case_status_recorder": case_status_recorder,
             "success_recorder": success_recorder,
         },
     )
@@ -76,6 +80,7 @@ async def _execute_autotests_async(
     trace_limit: int,
     truncation_context_lines: int,
     subtests: Any | None = None,
+    case_status_recorder: Callable[[str, str], None] | None = None,
     success_recorder: Any | None = None,
 ) -> int:
     if subtests is not None:
@@ -86,6 +91,7 @@ async def _execute_autotests_async(
             typecheck_mode=typecheck_mode,
             trace_limit=trace_limit,
             truncation_context_lines=truncation_context_lines,
+            case_status_recorder=case_status_recorder,
             success_recorder=success_recorder,
         )
     return await execute_autotests(
@@ -94,6 +100,7 @@ async def _execute_autotests_async(
         typecheck_mode=typecheck_mode,
         trace_limit=trace_limit,
         truncation_context_lines=truncation_context_lines,
+        case_status_recorder=case_status_recorder,
         success_recorder=success_recorder,
     )
 
@@ -116,6 +123,17 @@ def _resolve_success_recorder(request: pytest.FixtureRequest):
         labels.append(label)
 
     return _record_success
+
+
+def _resolve_case_status_recorder(request: pytest.FixtureRequest) -> Callable[[str, str], None]:
+    config = request.config
+    setattr(config, "_human_requests_autotest_case_records", [])
+
+    def _record_status(label: str, status: str) -> None:
+        records = getattr(config, "_human_requests_autotest_case_records", [])
+        records.append((label, status))
+
+    return _record_status
 
 
 def run_coroutine(coro: Coroutine[Any, Any, T]) -> T:

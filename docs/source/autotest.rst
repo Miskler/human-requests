@@ -55,7 +55,7 @@ the source chain entirely.
 
 ``autotest_truncation_context_lines`` controls how many source context lines are
 kept on each side of a split crash-report excerpt before the
-``[log content truncated]`` marker. The function header itself is always shown.
+``… skipped N lines …`` marker. The function header itself is always shown.
 The default is ``3``.
 
 
@@ -86,6 +86,12 @@ Example:
 The plugin adds one runtime test item: ``test_autotest_api_methods``.
 When ``pytest-subtests`` is installed, each discovered ``@autotest`` method
 and each ``@autotest_data`` case is reported as a separate subtest entry.
+Passing cases use ``.`` in the progress line, failed subtests use ``f``, and
+the wrapper item switches to ``M`` when the run is mixed. If the wrapper run
+contains failures, pytest keeps the generic ``contains ... failed subtests``
+wrapper summary and the ``SUBFAILED[...]`` entries, but no longer prints the
+per-case status table. Pytest reports one collected item because the plugin
+injects a runtime wrapper test during collection.
 
 
 Business Layer Marker

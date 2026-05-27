@@ -35,7 +35,7 @@ def register_ini_options(parser: pytest.Parser) -> None:
         default="3",
         help=(
             "How many source context lines to keep on each side of a split crash "
-            "report excerpt before [log content truncated]."
+            "report excerpt before the … skipped N lines … marker."
         ),
     )
 

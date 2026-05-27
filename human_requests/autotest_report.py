@@ -10,8 +10,9 @@ from pathlib import Path
 import traceback
 from types import FrameType
 from types import TracebackType
-from typing import Any, Callable, NoReturn
+from typing import Any, Callable, NoReturn, Sequence
 
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -146,6 +147,55 @@ def build_autotest_params_crash_report(
         trace_limit=trace_limit,
         truncation_context_lines=truncation_context_lines,
     ).report
+
+
+def build_autotest_case_results_report(
+    records: Sequence[tuple[str, str]],
+) -> str:
+    passed = sum(1 for _label, status in records if status == "passed")
+    failed = sum(1 for _label, status in records if status == "failed")
+    skipped = sum(1 for _label, status in records if status == "skipped")
+
+    heading = "Autotest case results"
+    details: list[str] = []
+    if passed:
+        details.append(f"{passed} passed")
+    if failed:
+        details.append(f"{failed} failed")
+    if skipped:
+        details.append(f"{skipped} skipped")
+    if details:
+        heading = f"{heading}: {', '.join(details)}"
+
+    if not records:
+        return f"{heading}\n\n<no autotest cases recorded>"
+
+    table = Table(
+        header_style="bold cyan",
+        box=box.SIMPLE_HEAVY,
+        expand=False,
+        pad_edge=False,
+    )
+    table.add_column("Test", overflow="fold")
+    table.add_column("Status", no_wrap=True)
+
+    for label, status in records:
+        table.add_row(
+            label,
+            Text(status, style=_status_style_for_case(status)),
+        )
+
+    buffer = io.StringIO()
+    console = Console(
+        file=buffer,
+        force_terminal=True,
+        color_system="standard",
+        legacy_windows=False,
+        width=Console().width,
+    )
+    console.print(table)
+    rendered = buffer.getvalue().rstrip("\r\n")
+    return f"{heading}\n\n{rendered}"
 
 
 def raise_autotest_method_crash(
@@ -587,7 +637,9 @@ def _render_source_excerpt(
             common_indent_len=common_indent_len,
         )
         if tail_end < end_bound:
-            rendered.append(_render_truncated_notice(line_no_width))
+            hidden_lines = end_bound - tail_end
+            if hidden_lines > 0:
+                rendered.append(_render_truncated_notice(line_no_width, hidden_lines))
         return rendered
 
     rendered = _render_source_excerpt_range(
@@ -604,7 +656,9 @@ def _render_source_excerpt(
     if not rendered:
         return ["<source unavailable>"]
 
-    rendered.append(_render_truncated_notice(line_no_width))
+    hidden_lines = tail_start - head_end
+    if hidden_lines > 0:
+        rendered.append(_render_truncated_notice(line_no_width, hidden_lines))
     tail_rendered = _render_source_excerpt_range(
         lines,
         start=tail_start,
@@ -619,7 +673,9 @@ def _render_source_excerpt(
     if tail_rendered:
         rendered.extend(tail_rendered)
     if tail_end < end_bound:
-        rendered.append(_render_truncated_notice(line_no_width))
+        hidden_lines = end_bound - tail_end
+        if hidden_lines > 0:
+            rendered.append(_render_truncated_notice(line_no_width, hidden_lines))
     return rendered
 
 
@@ -691,11 +747,25 @@ def _common_leading_whitespace_prefix(lines: list[str], *, start: int, end: int)
     return os.path.commonprefix(prefixes)
 
 
-def _render_truncated_notice(line_no_width: int) -> str:
+def _render_truncated_notice(line_no_width: int, skipped_lines: int) -> str:
+    suffix = "line" if skipped_lines == 1 else "lines"
     return (
         f"{' ' * line_no_width} │ "
-        + _render_styled_text("[log content truncated]", style="bold bright_black")
+        + _render_styled_text(
+            f"… skipped {skipped_lines} {suffix} …",
+            style="bold bright_black",
+        )
     )
+
+
+def _status_style_for_case(status: str) -> str:
+    if status == "passed":
+        return "green"
+    if status == "failed":
+        return "red"
+    if status == "skipped":
+        return "yellow"
+    return "white"
 
 
 def _render_source_chain(
@@ -715,7 +785,6 @@ def _render_source_chain(
         lines.append("Source:")
         source_path = _format_source_path(frame.filename, code_root)
         lines.append(f"{source_path}:{frame.lineno}")
-        lines.append("")
         lines.extend(
             _render_source_excerpt(
                 frame,

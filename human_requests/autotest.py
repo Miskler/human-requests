@@ -360,6 +360,7 @@ async def execute_autotests(
     typecheck_mode: AutotestTypecheckMode | str = "off",
     trace_limit: int = 3,
     truncation_context_lines: int = 3,
+    case_status_recorder: Callable[[str, str], None] | None = None,
     success_recorder: Callable[[str], None] | None = None,
 ) -> int:
     _validate_schemashot(schemashot)
@@ -370,9 +371,11 @@ async def execute_autotests(
 
     cases = discover_autotest_methods(api)
     for case in cases:
+        label = case.func.__qualname__
         missing_dependencies = tuple(dep for dep in case.depends_on if dep not in completed_funcs)
         if missing_dependencies:
             skipped_funcs.add(case.func)
+            _record_case_status(case_status_recorder, label, "skipped")
             continue
 
         try:
@@ -389,13 +392,21 @@ async def execute_autotests(
         except BaseException as error:  # pragma: no cover - runtime-only branch for skip semantics
             if _is_pytest_skip_exception(error):
                 skipped_funcs.add(case.func)
+                _record_case_status(case_status_recorder, label, "skipped")
                 continue
+            _record_case_status(case_status_recorder, label, "failed")
             raise
 
         completed_funcs.add(case.func)
         executed_count += 1
+        _record_case_status(case_status_recorder, label, "passed")
 
-    executed_count += await execute_autotest_data_cases(api=api, schemashot=schemashot, state=state)
+    executed_count += await execute_autotest_data_cases(
+        api=api,
+        schemashot=schemashot,
+        state=state,
+        case_status_recorder=case_status_recorder,
+    )
     return executed_count
 
 
@@ -407,6 +418,7 @@ async def execute_autotests_with_subtests(
     typecheck_mode: AutotestTypecheckMode | str = "off",
     trace_limit: int = 3,
     truncation_context_lines: int = 3,
+    case_status_recorder: Callable[[str, str], None] | None = None,
     success_recorder: Callable[[str], None] | None = None,
 ) -> int:
     _validate_schemashot(schemashot)
@@ -418,6 +430,7 @@ async def execute_autotests_with_subtests(
     cases = discover_autotest_methods(api)
     for case in cases:
         processed_count += 1
+        label = case.func.__qualname__
         case_succeeded = False
         with subtests.test(**_subtest_label_for_case(case)):
             missing_dependencies = tuple(
@@ -425,6 +438,7 @@ async def execute_autotests_with_subtests(
             )
             if missing_dependencies:
                 skipped_funcs.add(case.func)
+                _record_case_status(case_status_recorder, label, "skipped")
                 _skip_current_case(_format_dependency_skip_reason(missing_dependencies))
 
             try:
@@ -441,9 +455,13 @@ async def execute_autotests_with_subtests(
             except BaseException as error:  # pragma: no cover - runtime-only skip branch
                 if _is_pytest_skip_exception(error):
                     skipped_funcs.add(case.func)
+                    _record_case_status(case_status_recorder, label, "skipped")
+                else:
+                    _record_case_status(case_status_recorder, label, "failed")
                 raise
 
             case_succeeded = True
+            _record_case_status(case_status_recorder, label, "passed")
 
         if case_succeeded:
             completed_funcs.add(case.func)
@@ -453,6 +471,7 @@ async def execute_autotests_with_subtests(
         schemashot=schemashot,
         state=state,
         subtests=subtests,
+        case_status_recorder=case_status_recorder,
     )
     return processed_count
 
@@ -608,16 +627,29 @@ async def execute_autotest_data_cases(
     api: object,
     schemashot: Any,
     state: dict[str, Any] | None = None,
+    case_status_recorder: Callable[[str, str], None] | None = None,
 ) -> int:
     _validate_schemashot(schemashot)
     runtime_state = state if state is not None else {}
     ctx = AutotestDataContext(api=api, schemashot=schemashot, state=runtime_state)
 
     for case in list(_DATA_CASES):
-        payload = case.provider(ctx)
-        if inspect.isawaitable(payload):
-            payload = await payload
-        schemashot.assert_json_match(payload, case.name)
+        label = _snapshot_name_repr(case.name)
+        try:
+            payload = case.provider(ctx)
+            if inspect.isawaitable(payload):
+                payload = await payload
+            schemashot.assert_json_match(payload, case.name)
+        except BaseException as error:  # pragma: no cover - runtime-only branch for skip semantics
+            if isinstance(error, (KeyboardInterrupt, SystemExit)):
+                raise
+            if _is_pytest_skip_exception(error):
+                _record_case_status(case_status_recorder, label, "skipped")
+                raise
+            _record_case_status(case_status_recorder, label, "failed")
+            raise
+
+        _record_case_status(case_status_recorder, label, "passed")
 
     return len(_DATA_CASES)
 
@@ -628,6 +660,7 @@ async def _execute_autotest_data_cases_with_subtests(
     schemashot: Any,
     state: dict[str, Any],
     subtests: AutotestSubtests,
+    case_status_recorder: Callable[[str, str], None] | None = None,
 ) -> int:
     _validate_schemashot(schemashot)
     ctx = AutotestDataContext(api=api, schemashot=schemashot, state=state)
@@ -635,11 +668,21 @@ async def _execute_autotest_data_cases_with_subtests(
     processed_count = 0
     for case in list(_DATA_CASES):
         processed_count += 1
+        label = _snapshot_name_repr(case.name)
         with subtests.test(**_subtest_label_for_data(case)):
-            payload = case.provider(ctx)
-            if inspect.isawaitable(payload):
-                payload = await payload
-            schemashot.assert_json_match(payload, case.name)
+            try:
+                payload = case.provider(ctx)
+                if inspect.isawaitable(payload):
+                    payload = await payload
+                schemashot.assert_json_match(payload, case.name)
+            except BaseException as error:  # pragma: no cover - runtime-only skip branch
+                if _is_pytest_skip_exception(error):
+                    _record_case_status(case_status_recorder, label, "skipped")
+                else:
+                    _record_case_status(case_status_recorder, label, "failed")
+                raise
+
+            _record_case_status(case_status_recorder, label, "passed")
 
     return processed_count
 
@@ -812,6 +855,15 @@ def _snapshot_name_repr(name: object) -> str:
     if isinstance(name, list):
         return "[" + ", ".join(_snapshot_name_repr(item) for item in name) + "]"
     return repr(name)
+
+
+def _record_case_status(
+    recorder: Callable[[str, str], None] | None,
+    label: str,
+    status: str,
+) -> None:
+    if recorder is not None:
+        recorder(label, status)
 
 
 def _format_dependency_skip_reason(missing: tuple[AutotestFunction, ...]) -> str:

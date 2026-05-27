@@ -13,6 +13,7 @@ import pytest
 
 from human_requests.autotest import execute_autotests
 from human_requests.autotest_report import AutotestMethodCrash
+from human_requests.autotest_report import build_autotest_case_results_report
 from human_requests.autotest_report import raise_autotest_method_crash
 from human_requests.autotest_report import _render_truncated_notice
 
@@ -26,9 +27,9 @@ def _source_blocks(report: str) -> list[str]:
 
 
 def test_truncated_notice_is_bold_dark_gray() -> None:
-    rendered = _render_truncated_notice(2)
+    rendered = _render_truncated_notice(2, 18)
 
-    assert rendered == "   │ \x1b[1;90m[log content truncated]\x1b[0m"
+    assert rendered == "   │ \x1b[1;90m… skipped 18 lines …\x1b[0m"
 
 
 def _load_module(module_path: Path, module_name: str):
@@ -142,7 +143,7 @@ class Catalog:
         assert crash.source_path == expected_path
         assert crash.to_longrepr().reprcrash.path == expected_path
         assert re.search(
-            rf"^Source:\n{re.escape(expected_path)}:\d+$",
+            rf"^Source:\n{re.escape(expected_path)}:\d+\n\d+ │ ",
             report,
             re.MULTILINE,
         )
@@ -208,9 +209,10 @@ class Api:
     source_blocks = _source_blocks(report)
 
     assert report.count("Source:") == 3
-    assert report.count("[log content truncated]") == 2
-    first_marker = report.index("[log content truncated]")
-    second_marker = report.rindex("[log content truncated]")
+    markers = list(re.finditer(r"… skipped \d+ lines? …", report))
+    assert len(markers) == 2
+    first_marker = markers[0].start()
+    second_marker = markers[1].start()
     assert "async def broken(self)" in source_blocks[0]
     assert "def f(value)" in source_blocks[1]
     assert "def d(value)" in source_blocks[2]
@@ -349,3 +351,25 @@ def test_method_crash_report_respects_console_width(monkeypatch: pytest.MonkeyPa
 
     assert panel_lines
     assert max(len(line) for line in panel_lines) <= 60
+
+
+def test_case_results_report_renders_table() -> None:
+    report = _strip_ansi(
+        build_autotest_case_results_report(
+            [
+                ("Catalog.tree", "passed"),
+                ("Catalog.products_list", "failed"),
+                ("custom_info", "skipped"),
+            ]
+        )
+    )
+
+    assert "Autotest case results: 1 passed, 1 failed, 1 skipped" in report
+    assert "Test" in report
+    assert "Status" in report
+    assert "Catalog.tree" in report
+    assert "passed" in report
+    assert "Catalog.products_list" in report
+    assert "failed" in report
+    assert "custom_info" in report
+    assert "skipped" in report

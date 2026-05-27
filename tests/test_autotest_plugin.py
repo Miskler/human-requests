@@ -219,6 +219,77 @@ def test_plugin_reports_successful_autotest_cases(pytester: pytest.Pytester) -> 
     assert "API method passed" not in stdout
 
 
+def test_plugin_uses_dot_f_and_M_status_letters(pytester: pytest.Pytester) -> None:
+    if not _has_subtests_support():
+        pytest.skip("subtests plugin is not available in this pytest environment")
+
+    project_root = Path(__file__).resolve().parents[1]
+
+    pytester.syspathinsert(project_root)
+    pytester.makeini("""
+        [pytest]
+        autotest_start_class = sample_lib.StartClass
+        """)
+    pytester.makepyfile(sample_lib="""
+        from human_requests import autotest
+        from human_requests.abstraction import Output
+
+        class Response:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def json(self):
+                return self.payload
+
+        class StartClass:
+            def __init__(self):
+                self.parent = None
+
+            @autotest
+            async def a_ok(self):
+                return Response({"value": "ok"})
+
+            @autotest
+            async def z_bad(self):
+                return Output(raw="{")
+        """)
+    pytester.makeconftest("""
+        import pytest
+        from sample_lib import StartClass
+
+        class _SchemaShot:
+            def assert_json_match(self, data, func):
+                return None
+
+        @pytest.fixture
+        def api():
+            return StartClass()
+
+        @pytest.fixture
+        def schemashot():
+            return _SchemaShot()
+        """)
+
+    result = pytester.runpytest(
+        "-q",
+        "-p",
+        "subtests",
+        "-p",
+        "no:anyio",
+        "-p",
+        "no:human_requests_autotest",
+        "-p",
+        "human_requests.pytest_plugin",
+    )
+
+    stdout = _strip_ansi(result.stdout.str())
+    assert result.ret != 0
+    assert ".fM" in stdout
+    assert "Autotest case results" not in stdout
+    assert "contains 1 failed subtest" in stdout
+    assert "collected 0 items" not in stdout
+
+
 def test_plugin_applies_trace_limit_from_ini(pytester: pytest.Pytester) -> None:
     project_root = Path(__file__).resolve().parents[1]
 

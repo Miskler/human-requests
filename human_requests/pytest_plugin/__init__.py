@@ -3,6 +3,11 @@ from __future__ import annotations
 import pytest
 from _pytest.reports import TestReport
 
+try:
+    from _pytest.subtests import SubtestReport
+except ImportError:  # pragma: no cover - pytest without built-in subtests support
+    SubtestReport = None  # type: ignore[assignment]
+
 from ._config import get_start_class_path, register_ini_options
 from ._constants import AUTOTEST_TEST_NAME
 from ._runtime import _autotest_anyio_runner, run_autotest_tree_anyio, run_autotest_tree_sync
@@ -39,9 +44,12 @@ def pytest_collection_modifyitems(
     )
     setattr(runner, "_human_requests_autotest_runner", True)
     items.append(runner)
+    terminalreporter = config.pluginmanager.get_plugin("terminalreporter")
+    if terminalreporter is not None and hasattr(terminalreporter, "_numcollected"):
+        terminalreporter._numcollected += 1
 
 
-@pytest.hookimpl(hookwrapper=True)
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_runtest_makereport(
     item: pytest.Item,
     call: pytest.CallInfo[object],
@@ -58,9 +66,38 @@ def pytest_runtest_makereport(
         report.longrepr = error.to_longrepr()
 
 
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)
+def pytest_report_teststatus(
+    report: pytest.TestReport,
+    config: pytest.Config,
+):
+    outcome = yield
+    result = outcome.get_result()
+    if not isinstance(result, tuple) or len(result) != 3:
+        return
+    if SubtestReport is not None and isinstance(report, SubtestReport):
+        if AUTOTEST_TEST_NAME not in report.nodeid:
+            return
+        category, _letter, word = result
+        if report.passed:
+            outcome.force_result((category, ".", word))
+        elif report.failed:
+            outcome.force_result((category, "f", word))
+        return
+
+    if isinstance(report, _AutotestRunnerReport) and report.when == "call":
+        if report.failed and isinstance(report.longrepr, str):
+            if "failed subtest" in report.longrepr:
+                status = _resolve_runner_teststatus(config)
+                if status is not None:
+                    outcome.force_result(status)
+        return
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
-    labels = getattr(terminalreporter.config, "_human_requests_autotest_success_labels", [])
+    config = terminalreporter.config
+    labels = getattr(config, "_human_requests_autotest_success_labels", [])
     if not labels:
         return
 
@@ -90,6 +127,38 @@ def _pick_runner_parent(session: pytest.Session, items: list[pytest.Item]) -> py
             if isinstance(parent, pytest.Collector):
                 return parent
     return session
+
+
+def _resolve_runner_teststatus(
+    config: pytest.Config,
+) -> tuple[str, str, str | tuple[str, dict[str, bool]]] | None:
+    records = _get_case_records(config)
+    if not records:
+        return None
+
+    statuses = [status for _label, status in records]
+    passed = any(status == "passed" for status in statuses)
+    failed = any(status == "failed" for status in statuses)
+    if passed and failed:
+        return "failed", "M", ("mixed", {"yellow": True})
+    if failed:
+        return "failed", "F", ("failed", {"red": True})
+    return "passed", ".", ("passed", {"green": True})
+
+
+def _get_case_records(config: pytest.Config) -> list[tuple[str, str]]:
+    records = getattr(config, "_human_requests_autotest_case_records", None)
+    if records:
+        return list(records)
+
+    legacy_statuses = getattr(config, "_human_requests_autotest_case_statuses", None)
+    if not legacy_statuses:
+        return []
+
+    if legacy_statuses and isinstance(legacy_statuses[0], tuple):
+        return list(legacy_statuses)
+
+    return [(str(index), str(status)) for index, status in enumerate(legacy_statuses, start=1)]
 
 
 __all__ = [
