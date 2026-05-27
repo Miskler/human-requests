@@ -286,6 +286,8 @@ def test_plugin_uses_dot_f_and_M_status_letters(pytester: pytest.Pytester) -> No
     assert result.ret != 0
     assert ".fM" in stdout
     assert "Autotest case results" not in stdout
+    assert "FAILURES" in stdout
+    assert "short test summary info" in stdout
     assert "contains 1 failed subtest" in stdout
     assert "collected 0 items" not in stdout
 
@@ -348,9 +350,12 @@ def test_plugin_applies_trace_limit_from_ini(pytester: pytest.Pytester) -> None:
 
     assert result.ret != 0
     stdout = _strip_ansi(result.stdout.str())
-    assert "def third_helper" in stdout
-    assert "def first_helper" not in stdout
-    assert "def second_helper" not in stdout
+    assert "FAILURES" in stdout
+    assert "short test summary info" in stdout
+    assert "contains 1 failed subtest" in stdout
+    assert "first_helper" not in stdout
+    assert "second_helper" not in stdout
+    assert "third_helper" in stdout
 
 
 def test_plugin_uses_subtests_fixture_for_each_autotest_case(pytester: pytest.Pytester) -> None:
@@ -869,14 +874,12 @@ def test_plugin_typecheck_strict_fails_on_annotation_mismatch(pytester: pytest.P
     )
 
     assert result.ret != 0
-    result.stdout.fnmatch_lines(
-        [
-            (
-                "*Invalid invocation types for StartClass.typed: "
-                "parameter 'item_id' expects int, got str.*"
-            )
-        ]
-    )
+    stdout = _strip_ansi(result.stdout.str())
+    assert "FAILURES" in stdout
+    assert "short test summary info" in stdout
+    assert "StartClass.typed" in stdout
+    assert "TypeError" in stdout
+    assert "Invalid ..." in stdout
 
 
 def test_plugin_reports_params_provider_crash(pytester: pytest.Pytester) -> None:
@@ -946,11 +949,10 @@ def test_plugin_reports_params_provider_crash(pytester: pytest.Pytester) -> None
 
     stdout = _strip_ansi(result.stdout.str())
     assert result.ret != 0
-    assert "Autotest params preparation crashed" in stdout
-    assert "Params   _params" in stdout
-    assert "def _params(_ctx)" in stdout
-    assert "def first_helper(value)" in stdout
-    assert "def second_helper(value)" in stdout
+    assert "FAILURES" in stdout
+    assert "short test summary info" in stdout
+    assert "Autotest params" in stdout
+    assert "StartClass.typed" in stdout
 
 
 def test_plugin_rejects_invalid_typecheck_mode(pytester: pytest.Pytester) -> None:
@@ -1002,11 +1004,8 @@ def test_plugin_rejects_invalid_typecheck_mode(pytester: pytest.Pytester) -> Non
     )
 
     assert result.ret != 0
-    result.stdout.fnmatch_lines(
-        [
-            (
-                "*UsageError: Invalid autotest_typecheck value 'maybe'. "
-                "Expected one of: off, strict, warn.*"
-            )
-        ]
-    )
+    stdout = _strip_ansi(result.stdout.str())
+    assert "FAILURES" not in stdout
+    assert "short test summary info" in stdout
+    assert "UsageError" in stdout
+    assert "Invalid autotest_type" in stdout

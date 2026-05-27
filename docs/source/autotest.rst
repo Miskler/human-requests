@@ -88,10 +88,10 @@ When ``pytest-subtests`` is installed, each discovered ``@autotest`` method
 and each ``@autotest_data`` case is reported as a separate subtest entry.
 Passing cases use ``.`` in the progress line, failed subtests use ``f``, and
 the wrapper item switches to ``M`` when the run is mixed. If the wrapper run
-contains failures, pytest keeps the generic ``contains ... failed subtests``
-wrapper summary and the ``SUBFAILED[...]`` entries, but no longer prints the
-per-case status table. Pytest reports one collected item because the plugin
-injects a runtime wrapper test during collection.
+contains failures, pytest suppresses the detailed ``FAILURES`` block for the
+generated wrapper run and keeps only the ``short test summary info`` lines with
+the ``SUBFAILED[...]`` entries. Pytest reports one collected item because the
+plugin injects a runtime wrapper test during collection.
 
 
 Business Layer Marker

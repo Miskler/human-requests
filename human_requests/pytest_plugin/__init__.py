@@ -94,26 +94,35 @@ def pytest_report_teststatus(
         return
 
 
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    del exitstatus
+    terminalreporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if terminalreporter is None:
+        return
+
+    _maybe_suppress_failure_section(terminalreporter)
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
     config = terminalreporter.config
     labels = getattr(config, "_human_requests_autotest_success_labels", [])
-    if not labels:
-        return
-
-    passed_reports = terminalreporter.stats.setdefault("passed", [])
-    for index, label in enumerate(labels, start=1):
-        nodeid = f"{AUTOTEST_TEST_NAME}[success-{index}:{label}]"
-        passed_reports.append(
-            TestReport(
-                nodeid=nodeid,
-                location=("", None, label),
-                keywords={},
-                outcome="passed",
-                longrepr=None,
-                when="call",
+    if labels:
+        passed_reports = terminalreporter.stats.setdefault("passed", [])
+        for index, label in enumerate(labels, start=1):
+            nodeid = f"{AUTOTEST_TEST_NAME}[success-{index}:{label}]"
+            passed_reports.append(
+                TestReport(
+                    nodeid=nodeid,
+                    location=("", None, label),
+                    keywords={},
+                    outcome="passed",
+                    longrepr=None,
+                    when="call",
+                )
             )
-        )
+
+    _maybe_suppress_failure_section(terminalreporter)
 
 
 def _has_anyio_plugin(config: pytest.Config) -> bool:
@@ -144,6 +153,41 @@ def _resolve_runner_teststatus(
     if failed:
         return "failed", "F", ("failed", {"red": True})
     return "passed", ".", ("passed", {"green": True})
+
+
+def _maybe_suppress_failure_section(terminalreporter: pytest.TerminalReporter) -> None:
+    if getattr(terminalreporter, "_human_requests_autotest_skip_failures", False):
+        return
+
+    failed_reports = terminalreporter.stats.get("failed", [])
+    if not failed_reports:
+        return
+
+    if not any(_is_autotest_runner_report(report) for report in failed_reports):
+        return
+
+    terminalreporter._human_requests_autotest_skip_failures = True
+    original_summary_failures = terminalreporter.summary_failures
+
+    def _summary_failures_without_autotest_runner() -> None:
+        reports = terminalreporter.stats.get("failed", [])
+        filtered_reports = [
+            report for report in reports if not _is_autotest_runner_report(report)
+        ]
+        if len(filtered_reports) == len(reports):
+            return original_summary_failures()
+
+        terminalreporter.stats["failed"] = filtered_reports
+        try:
+            return original_summary_failures()
+        finally:
+            terminalreporter.stats["failed"] = reports
+
+    terminalreporter.summary_failures = _summary_failures_without_autotest_runner
+
+
+def _is_autotest_runner_report(report: TestReport) -> bool:
+    return isinstance(report, _AutotestRunnerReport)
 
 
 def _get_case_records(config: pytest.Config) -> list[tuple[str, str]]:
