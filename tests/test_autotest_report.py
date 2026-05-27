@@ -12,10 +12,12 @@ from typing import Any
 import pytest
 
 from human_requests.autotest import execute_autotests
-from human_requests.autotest_report import AutotestMethodCrash
-from human_requests.autotest_report import build_autotest_case_results_report
-from human_requests.autotest_report import raise_autotest_method_crash
-from human_requests.autotest_report import _render_truncated_notice
+from human_requests.autotest_report import (
+    AutotestMethodCrash,
+    _render_truncated_notice,
+    build_autotest_case_results_report,
+    raise_autotest_method_crash,
+)
 
 
 def _strip_ansi(text: str) -> str:
@@ -89,7 +91,7 @@ class Api:
     assert "async def broken(self)" in report
     assert 'return Output(raw="{")' in report
     assert "async def first(self)" not in report
-    assert 'return Output(raw=\'{"ok": true}\')' not in report
+    assert "return Output(raw='{\"ok\": true}')" not in report
 
 
 def test_method_crash_report_formats_source_path_relative_to_cwd(
@@ -157,7 +159,9 @@ class Catalog:
 
 
 @pytest.mark.asyncio
-async def test_method_crash_report_truncated_source_shows_head_tail_and_end_marker(tmp_path: Path) -> None:
+async def test_method_crash_report_truncated_source_shows_head_tail_and_end_marker(
+    tmp_path: Path,
+) -> None:
     module_path = tmp_path / "sample_api.py"
     module_path.write_text(
         """from human_requests import autotest
@@ -222,6 +226,7 @@ class Api:
     assert "prefix_12" in report
     assert "suffix_1" in report
     assert "suffix_8" not in report
+
 
 @pytest.mark.asyncio
 async def test_method_crash_report_does_not_include_neighboring_lines(tmp_path: Path) -> None:

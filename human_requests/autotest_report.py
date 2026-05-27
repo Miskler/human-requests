@@ -1,26 +1,23 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import inspect
 import io
-import os
 import linecache
+import os
 import sys
-from pathlib import Path
 import traceback
-from types import FrameType
-from types import TracebackType
+from dataclasses import dataclass
+from pathlib import Path
+from types import FrameType, TracebackType
 from typing import Any, Callable, NoReturn, Sequence
 
+from _pytest._code.code import ReprExceptionInfo, ReprFileLocation, ReprTracebackNative
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
 from rich.syntax import Syntax
+from rich.table import Table
 from rich.text import Text
-from _pytest._code.code import ReprExceptionInfo
-from _pytest._code.code import ReprFileLocation
-from _pytest._code.code import ReprTracebackNative
 
 AutotestFunction = Callable[..., Any]
 
@@ -237,12 +234,13 @@ def raise_autotest_hook_crash(
     trace_limit: int = 3,
     truncation_context_lines: int = 3,
 ) -> NoReturn:
+    resolved_subject_value = str(subject_value or getattr(hook, "__qualname__", repr(hook)))
     raise AutotestHookCrash(
         _build_autotest_crash_data(
             api=api,
             title=summary_message,
             subject_label=subject_label,
-            subject_value=subject_value or getattr(hook, "__qualname__", repr(hook)),
+            subject_value=resolved_subject_value,
             error=error,
             context_lines=truncation_context_lines,
             source_func=source_func,
@@ -266,7 +264,9 @@ def raise_autotest_params_crash(
     trace_limit: int = 3,
     truncation_context_lines: int = 3,
 ) -> NoReturn:
-    provider_name = subject_value or getattr(params_provider, "__qualname__", repr(params_provider))
+    provider_name = str(
+        subject_value or getattr(params_provider, "__qualname__", repr(params_provider))
+    )
     raise AutotestParamsCrash(
         _build_autotest_crash_data(
             api=api,
@@ -333,9 +333,7 @@ def _build_autotest_crash_data(
             value=detail_message or _format_error_message(error),
             label_style="bold cyan",
             value_style="white",
-            value_highlights=(
-                ("human_requests.abstraction.Output", "bold magenta"),
-            ),
+            value_highlights=(("human_requests.abstraction.Output", "bold magenta"),),
         ),
     ]
 
@@ -401,7 +399,7 @@ def _select_source_frame(
     code_root: Path | None,
     *,
     source_func: AutotestFunction | None = None,
-):
+) -> AutotestSourceLocation | None:
     if not frames:
         return None
 
@@ -449,6 +447,7 @@ def _traceback_source_locations(
             end_colno=summary.end_colno,
         )
         if location is None:
+            assert summary.lineno is not None
             location = AutotestSourceLocation(
                 filename=summary.filename,
                 lineno=summary.lineno,
@@ -484,7 +483,9 @@ def _drop_trace_source_frame(
     return filtered
 
 
-def _frame_matches_location(frame: traceback.FrameSummary, location: AutotestSourceLocation) -> bool:
+def _frame_matches_location(
+    frame: AutotestSourceLocation, location: AutotestSourceLocation
+) -> bool:
     try:
         frame_path = Path(frame.filename).resolve()
         location_path = Path(location.filename).resolve()
@@ -749,12 +750,9 @@ def _common_leading_whitespace_prefix(lines: list[str], *, start: int, end: int)
 
 def _render_truncated_notice(line_no_width: int, skipped_lines: int) -> str:
     suffix = "line" if skipped_lines == 1 else "lines"
-    return (
-        f"{' ' * line_no_width} │ "
-        + _render_styled_text(
-            f"… skipped {skipped_lines} {suffix} …",
-            style="bold bright_black",
-        )
+    return f"{' ' * line_no_width} │ " + _render_styled_text(
+        f"… skipped {skipped_lines} {suffix} …",
+        style="bold bright_black",
     )
 
 
@@ -860,7 +858,10 @@ def _render_styled_text(
     if style is None and not highlights:
         return text
 
-    rich_text = Text(text, style=style)
+    if style is None:
+        rich_text = Text(text)
+    else:
+        rich_text = Text(text, style=style)
     for needle, highlight_style in highlights:
         start = 0
         while True:

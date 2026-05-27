@@ -6,9 +6,13 @@ from typing import Any
 
 import pytest
 
-from ._constants import AUTOTEST_INI_KEY, AUTOTEST_TYPECHECK_INI_KEY
-from ._constants import AUTOTEST_TRACE_LIMIT_INI_KEY, AUTOTEST_TRUNCATION_CONTEXT_LINES_INI_KEY
-from ._constants import VALID_TYPECHECK_MODES
+from ._constants import (
+    AUTOTEST_INI_KEY,
+    AUTOTEST_TRACE_LIMIT_INI_KEY,
+    AUTOTEST_TRUNCATION_CONTEXT_LINES_INI_KEY,
+    AUTOTEST_TYPECHECK_INI_KEY,
+    VALID_TYPECHECK_MODES,
+)
 
 
 def register_ini_options(parser: pytest.Parser) -> None:

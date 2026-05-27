@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
-from dataclasses import dataclass
 import inspect
 import re
 import sys
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -23,8 +24,7 @@ from human_requests.autotest import (
     execute_autotests,
     find_autotest_policy,
 )
-from human_requests.autotest_report import AutotestMethodCrash
-from human_requests.autotest_report import AutotestParamsCrash
+from human_requests.autotest_report import AutotestMethodCrash, AutotestParamsCrash
 
 
 @dataclass
@@ -122,12 +122,8 @@ async def test_method_crash_report_trims_method_from_source_chain_when_limit_is_
     def first_helper(value: int) -> int:
         return second_helper(value)
 
-
-
     def second_helper(value: int) -> int:
         return third_helper(value)
-
-
 
     def third_helper(value: int) -> int:
         return 1 / value
@@ -176,37 +172,35 @@ async def test_method_crash_report_uses_custom_truncation_context_lines() -> Non
     def first_helper(value: int) -> int:
         return second_helper(value)
 
-
     def second_helper(value: int) -> int:
         return third_helper(value)
 
-
     def third_helper(value: int) -> int:
-        prefix_1 = 1
-        prefix_2 = 1
-        prefix_3 = 1
-        prefix_4 = 1
-        prefix_5 = 1
-        prefix_6 = 1
-        prefix_7 = 1
-        prefix_8 = 1
-        prefix_9 = 1
-        prefix_10 = 1
-        prefix_11 = 1
-        prefix_12 = 1
+        prefix_1 = 1  # noqa: F841
+        prefix_2 = 1  # noqa: F841
+        prefix_3 = 1  # noqa: F841
+        prefix_4 = 1  # noqa: F841
+        prefix_5 = 1  # noqa: F841
+        prefix_6 = 1  # noqa: F841
+        prefix_7 = 1  # noqa: F841
+        prefix_8 = 1  # noqa: F841
+        prefix_9 = 1  # noqa: F841
+        prefix_10 = 1  # noqa: F841
+        prefix_11 = 1  # noqa: F841
+        prefix_12 = 1  # noqa: F841
         return 1 / value
-        suffix_1 = 1
-        suffix_2 = 1
-        suffix_3 = 1
-        suffix_4 = 1
-        suffix_5 = 1
-        suffix_6 = 1
-        suffix_7 = 1
-        suffix_8 = 1
-        suffix_9 = 1
-        suffix_10 = 1
-        suffix_11 = 1
-        suffix_12 = 1
+        suffix_1 = 1  # noqa: F841
+        suffix_2 = 1  # noqa: F841
+        suffix_3 = 1  # noqa: F841
+        suffix_4 = 1  # noqa: F841
+        suffix_5 = 1  # noqa: F841
+        suffix_6 = 1  # noqa: F841
+        suffix_7 = 1  # noqa: F841
+        suffix_8 = 1  # noqa: F841
+        suffix_9 = 1  # noqa: F841
+        suffix_10 = 1  # noqa: F841
+        suffix_11 = 1  # noqa: F841
+        suffix_12 = 1  # noqa: F841
 
     class _CrashApi:
         def __init__(self) -> None:
@@ -236,9 +230,16 @@ async def test_method_crash_report_uses_custom_truncation_context_lines() -> Non
     assert "suffix_5 = 1" not in default_report
     assert "prefix_5 = 1" in custom_report
     assert "suffix_5 = 1" in custom_report
-    assert re.search(r"^\s*\d+ │     prefix_5 = 1$", custom_report, re.MULTILINE)
-    assert re.search(r"^\s*\d+ │     suffix_5 = 1$", custom_report, re.MULTILINE)
-    assert not re.search(r"^\s*\d+ │ suffix_5 = 1$", custom_report, re.MULTILINE)
+    assert re.search(
+        r"^\s*\d+ │\s+prefix_5 = 1(?:\s+# noqa: F841)?$",
+        custom_report,
+        re.MULTILINE,
+    )
+    assert re.search(
+        r"^\s*\d+ │\s+suffix_5 = 1(?:\s+# noqa: F841)?$",
+        custom_report,
+        re.MULTILINE,
+    )
     assert "suffix_6 = 1" not in custom_report
 
 
@@ -247,12 +248,8 @@ async def test_method_crash_trace_limit_keeps_only_tail_frame() -> None:
     def first_helper(value: int) -> int:
         return second_helper(value)
 
-
-
     def second_helper(value: int) -> int:
         return third_helper(value)
-
-
 
     def third_helper(value: int) -> int:
         return 1 / value

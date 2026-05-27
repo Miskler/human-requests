@@ -19,9 +19,11 @@ from typing import (
     get_origin,
 )
 
-from .autotest_report import raise_autotest_hook_crash
-from .autotest_report import raise_autotest_method_crash
-from .autotest_report import raise_autotest_params_crash
+from .autotest_report import (
+    raise_autotest_hook_crash,
+    raise_autotest_method_crash,
+    raise_autotest_params_crash,
+)
 
 AutotestFunction = Callable[..., Any]
 AutotestHook = Callable[[Any, Any, "AutotestContext"], Any]
@@ -530,10 +532,10 @@ async def execute_autotest_case(
         state=runtime_state,
     )
 
+    response_json_error: BaseException | None = None
+    response_json_detail_message: str | None = None
     hook = find_autotest_hook(case.func, case.parent)
     if hook is not None:
-        response_json_error: BaseException | None = None
-        response_json_detail_message: str | None = None
         try:
             if not hasattr(response, "json") or not callable(response.json):
                 response_json_error = TypeError(
@@ -588,8 +590,6 @@ async def execute_autotest_case(
         if hook_result is not None:
             data = hook_result
     else:
-        response_json_error: BaseException | None = None
-        response_json_detail_message: str | None = None
         try:
             if not hasattr(response, "json") or not callable(response.json):
                 response_json_error = TypeError(

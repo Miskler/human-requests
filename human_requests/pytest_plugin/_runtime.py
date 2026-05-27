@@ -7,8 +7,12 @@ from typing import Any, Callable, TypeVar
 import pytest
 
 from ..autotest import execute_autotests, execute_autotests_with_subtests
-from ._config import get_trace_limit, get_truncation_context_lines, get_typecheck_mode
-from ._config import resolve_runtime_dependencies
+from ._config import (
+    get_trace_limit,
+    get_truncation_context_lines,
+    get_typecheck_mode,
+    resolve_runtime_dependencies,
+)
 
 T = TypeVar("T")
 
@@ -114,7 +118,7 @@ def _resolve_subtests_fixture(request: pytest.FixtureRequest) -> Any | None:
         return None
 
 
-def _resolve_success_recorder(request: pytest.FixtureRequest):
+def _resolve_success_recorder(request: pytest.FixtureRequest) -> Callable[[str], None]:
     config = request.config
     setattr(config, "_human_requests_autotest_success_labels", [])
 

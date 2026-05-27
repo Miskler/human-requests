@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+from collections.abc import Generator
+from typing import Any
+
 import pytest
 from _pytest.reports import TestReport
 
 try:
     from _pytest.subtests import SubtestReport
 except ImportError:  # pragma: no cover - pytest without built-in subtests support
-    SubtestReport = None  # type: ignore[assignment]
+    SubtestReport = None  # type: ignore[assignment, misc]
 
+from ..autotest_report import AutotestCrash
 from ._config import get_start_class_path, register_ini_options
 from ._constants import AUTOTEST_TEST_NAME
 from ._runtime import _autotest_anyio_runner, run_autotest_tree_anyio, run_autotest_tree_sync
-from ..autotest_report import AutotestCrash
 
 
 class _AutotestRunnerReport(TestReport):
@@ -53,7 +56,7 @@ def pytest_collection_modifyitems(
 def pytest_runtest_makereport(
     item: pytest.Item,
     call: pytest.CallInfo[object],
-):
+) -> Generator[None, Any, None]:
     outcome = yield
     report = outcome.get_result()
     if getattr(item, "_human_requests_autotest_runner", False):
@@ -70,7 +73,7 @@ def pytest_runtest_makereport(
 def pytest_report_teststatus(
     report: pytest.TestReport,
     config: pytest.Config,
-):
+) -> Generator[None, Any, None]:
     outcome = yield
     result = outcome.get_result()
     if not isinstance(result, tuple) or len(result) != 3:
@@ -166,14 +169,12 @@ def _maybe_suppress_failure_section(terminalreporter: pytest.TerminalReporter) -
     if not any(_is_autotest_runner_report(report) for report in failed_reports):
         return
 
-    terminalreporter._human_requests_autotest_skip_failures = True
+    setattr(terminalreporter, "_human_requests_autotest_skip_failures", True)
     original_summary_failures = terminalreporter.summary_failures
 
     def _summary_failures_without_autotest_runner() -> None:
         reports = terminalreporter.stats.get("failed", [])
-        filtered_reports = [
-            report for report in reports if not _is_autotest_runner_report(report)
-        ]
+        filtered_reports = [report for report in reports if not _is_autotest_runner_report(report)]
         if len(filtered_reports) == len(reports):
             return original_summary_failures()
 
@@ -183,7 +184,7 @@ def _maybe_suppress_failure_section(terminalreporter: pytest.TerminalReporter) -
         finally:
             terminalreporter.stats["failed"] = reports
 
-    terminalreporter.summary_failures = _summary_failures_without_autotest_runner
+    setattr(terminalreporter, "summary_failures", _summary_failures_without_autotest_runner)
 
 
 def _is_autotest_runner_report(report: TestReport) -> bool:

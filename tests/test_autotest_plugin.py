@@ -7,8 +7,7 @@ from pathlib import Path
 import pytest
 
 from human_requests.autotest import clear_autotest_hooks
-from human_requests.pytest_plugin._config import get_trace_limit
-from human_requests.pytest_plugin._config import get_truncation_context_lines
+from human_requests.pytest_plugin._config import get_trace_limit, get_truncation_context_lines
 
 pytest_plugins = ["pytester"]
 
@@ -64,10 +63,7 @@ def test_plugin_parses_trace_limit() -> None:
 def test_plugin_rejects_invalid_trace_limit() -> None:
     with pytest.raises(
         pytest.UsageError,
-        match=(
-            "Invalid autotest_trace_limit value 'maybe'. "
-            "Expected a non-negative integer."
-        ),
+        match=("Invalid autotest_trace_limit value 'maybe'. " "Expected a non-negative integer."),
     ):
         get_trace_limit(_IniConfig("maybe"))
 
