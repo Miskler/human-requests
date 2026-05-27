@@ -80,6 +80,10 @@ class AutotestHookCrash(AutotestCrash):
     pass
 
 
+class AutotestParamsCrash(AutotestCrash):
+    pass
+
+
 def build_autotest_method_crash_report(
     *,
     api: object,
@@ -115,6 +119,28 @@ def build_autotest_hook_crash_report(
         title="Autotest hook crashed",
         subject_label="Hook",
         subject_value=getattr(hook, "__qualname__", repr(hook)),
+        error=error,
+        context_lines=context_lines,
+        trace_limit=trace_limit,
+        truncation_context_lines=truncation_context_lines,
+    ).report
+
+
+def build_autotest_params_crash_report(
+    *,
+    api: object,
+    params_provider: AutotestFunction,
+    error: BaseException,
+    context_lines: int = 3,
+    trace_limit: int = 3,
+    truncation_context_lines: int = 3,
+) -> str:
+    provider_name = getattr(params_provider, "__qualname__", repr(params_provider))
+    return _build_autotest_crash_data(
+        api=api,
+        title="Autotest params preparation crashed",
+        subject_label="Params",
+        subject_value=provider_name,
         error=error,
         context_lines=context_lines,
         trace_limit=trace_limit,
@@ -170,6 +196,36 @@ def raise_autotest_hook_crash(
             error=error,
             context_lines=truncation_context_lines,
             source_func=source_func,
+            detail_message=detail_message,
+            trace_limit=trace_limit,
+            truncation_context_lines=truncation_context_lines,
+        )
+    )
+
+
+def raise_autotest_params_crash(
+    *,
+    api: object,
+    params_provider: AutotestFunction,
+    error: BaseException,
+    summary_message: str = "Autotest params preparation crashed",
+    subject_label: str = "Params",
+    subject_value: str | None = None,
+    source_func: AutotestFunction | None = None,
+    detail_message: str | None = None,
+    trace_limit: int = 3,
+    truncation_context_lines: int = 3,
+) -> NoReturn:
+    provider_name = subject_value or getattr(params_provider, "__qualname__", repr(params_provider))
+    raise AutotestParamsCrash(
+        _build_autotest_crash_data(
+            api=api,
+            title=summary_message,
+            subject_label=subject_label,
+            subject_value=provider_name,
+            error=error,
+            context_lines=truncation_context_lines,
+            source_func=source_func or params_provider,
             detail_message=detail_message,
             trace_limit=trace_limit,
             truncation_context_lines=truncation_context_lines,

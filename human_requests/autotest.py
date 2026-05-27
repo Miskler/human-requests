@@ -21,6 +21,7 @@ from typing import (
 
 from .autotest_report import raise_autotest_hook_crash
 from .autotest_report import raise_autotest_method_crash
+from .autotest_report import raise_autotest_params_crash
 
 AutotestFunction = Callable[..., Any]
 AutotestHook = Callable[[Any, Any, "AutotestContext"], Any]
@@ -359,6 +360,7 @@ async def execute_autotests(
     typecheck_mode: AutotestTypecheckMode | str = "off",
     trace_limit: int = 3,
     truncation_context_lines: int = 3,
+    success_recorder: Callable[[str], None] | None = None,
 ) -> int:
     _validate_schemashot(schemashot)
     resolved_typecheck_mode = _normalize_typecheck_mode(typecheck_mode)
@@ -382,6 +384,7 @@ async def execute_autotests(
                 typecheck_mode=resolved_typecheck_mode,
                 trace_limit=trace_limit,
                 truncation_context_lines=truncation_context_lines,
+                success_recorder=success_recorder,
             )
         except BaseException as error:  # pragma: no cover - runtime-only branch for skip semantics
             if _is_pytest_skip_exception(error):
@@ -404,6 +407,7 @@ async def execute_autotests_with_subtests(
     typecheck_mode: AutotestTypecheckMode | str = "off",
     trace_limit: int = 3,
     truncation_context_lines: int = 3,
+    success_recorder: Callable[[str], None] | None = None,
 ) -> int:
     _validate_schemashot(schemashot)
     resolved_typecheck_mode = _normalize_typecheck_mode(typecheck_mode)
@@ -432,6 +436,7 @@ async def execute_autotests_with_subtests(
                     typecheck_mode=resolved_typecheck_mode,
                     trace_limit=trace_limit,
                     truncation_context_lines=truncation_context_lines,
+                    success_recorder=success_recorder,
                 )
             except BaseException as error:  # pragma: no cover - runtime-only skip branch
                 if _is_pytest_skip_exception(error):
@@ -461,6 +466,7 @@ async def execute_autotest_case(
     typecheck_mode: AutotestTypecheckMode | str = "off",
     trace_limit: int = 3,
     truncation_context_lines: int = 3,
+    success_recorder: Callable[[str], None] | None = None,
 ) -> None:
     _validate_schemashot(schemashot)
     resolved_typecheck_mode = _normalize_typecheck_mode(typecheck_mode)
@@ -472,6 +478,8 @@ async def execute_autotest_case(
         schemashot=schemashot,
         state=runtime_state,
         typecheck_mode=resolved_typecheck_mode,
+        trace_limit=trace_limit,
+        truncation_context_lines=truncation_context_lines,
     )
 
     try:
@@ -591,6 +599,8 @@ async def execute_autotest_case(
             )
 
     schemashot.assert_json_match(data, case.func)
+    if success_recorder is not None:
+        success_recorder(case.func.__qualname__)
 
 
 async def execute_autotest_data_cases(
@@ -853,6 +863,8 @@ async def _resolve_invocation(
     schemashot: Any,
     state: dict[str, Any],
     typecheck_mode: AutotestTypecheckMode,
+    trace_limit: int = 3,
+    truncation_context_lines: int = 3,
 ) -> AutotestInvocation:
     provider = find_autotest_params_provider(case.func, case.parent)
     if provider is None:
@@ -867,10 +879,23 @@ async def _resolve_invocation(
             schemashot=schemashot,
             state=state,
         )
-        raw = provider(ctx)
-        if inspect.isawaitable(raw):
-            raw = await raw
-        invocation = _normalize_invocation(raw, case.func)
+        try:
+            raw = provider(ctx)
+            if inspect.isawaitable(raw):
+                raw = await raw
+            invocation = _normalize_invocation(raw, case.func)
+        except BaseException as error:  # pragma: no cover - runtime-only branch for crash reporting
+            if isinstance(error, (KeyboardInterrupt, SystemExit)):
+                raise
+            if _is_pytest_skip_exception(error):
+                raise
+            raise_autotest_params_crash(
+                api=api,
+                params_provider=provider,
+                error=error,
+                trace_limit=trace_limit,
+                truncation_context_lines=truncation_context_lines,
+            )
 
     _validate_invocation(
         case.method,

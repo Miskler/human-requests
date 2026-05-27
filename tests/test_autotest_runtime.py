@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import dataclass
 import inspect
 import re
+import sys
 from typing import Any
 
 import pytest
@@ -22,6 +24,7 @@ from human_requests.autotest import (
     find_autotest_policy,
 )
 from human_requests.autotest_report import AutotestMethodCrash
+from human_requests.autotest_report import AutotestParamsCrash
 
 
 @dataclass
@@ -79,6 +82,17 @@ def _strip_ansi(text: str) -> str:
 
 def _source_blocks(report: str) -> list[str]:
     return report.split("\n\nSource:\n")[1:]
+
+
+def _load_module(module_path: Path, module_name: str):
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    assert spec is not None
+    assert spec.loader is not None
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 @pytest.fixture(autouse=True)
@@ -269,6 +283,60 @@ async def test_method_crash_trace_limit_keeps_only_tail_frame() -> None:
     assert "async def tree(self)" not in report
     assert "def first_helper" not in report
     assert "def second_helper" not in report
+
+
+@pytest.mark.asyncio
+async def test_params_provider_crash_report_shows_provider_and_helper_chain(
+    tmp_path: Path,
+) -> None:
+    module_path = tmp_path / "sample_api.py"
+    module_path.write_text(
+        """from human_requests import autotest
+from human_requests import autotest_params
+from human_requests.abstraction import Output
+
+def first_helper(value: int) -> int:
+    return second_helper(value)
+
+def second_helper(value: int) -> int:
+    return 1 / value
+
+class _CrashApi:
+    def __init__(self) -> None:
+        self.parent = None
+
+    @autotest
+    async def by_id(self, product_id: int) -> Output:
+        return Output(raw="{}")
+
+@autotest_params(target=_CrashApi.by_id)
+def _params(ctx):
+    del ctx
+    return {"product_id": first_helper(0)}
+""",
+        encoding="utf-8",
+    )
+
+    module = _load_module(module_path, "sample_api_params_crash")
+    api = module._CrashApi()
+    schemashot = _SchemaShotSpy()
+
+    with pytest.raises(AutotestParamsCrash) as excinfo:
+        await execute_autotests(api=api, schemashot=schemashot)
+
+    report = _strip_ansi(excinfo.value.report)
+    source_blocks = _source_blocks(report)
+
+    assert "Autotest params preparation crashed" in report
+    assert report.count("Source:") == 3
+    assert len(source_blocks) == 3
+    assert "Params   _params" in report
+    assert "def _params(ctx)" in source_blocks[0]
+    assert "def first_helper(value: int)" in source_blocks[1]
+    assert "return second_helper(value)" in source_blocks[1]
+    assert "def second_helper(value: int)" in source_blocks[2]
+    assert "return 1 / value" in source_blocks[2]
+    assert "async def by_id(self, product_id: int)" not in report
 
 
 @pytest.mark.asyncio

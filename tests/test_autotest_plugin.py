@@ -141,12 +141,82 @@ def test_plugin_runs_without_manual_tests(pytester: pytest.Pytester) -> None:
         "human_requests.pytest_plugin",
     )
     outcomes = result.parseoutcomes()
-    assert outcomes.get("passed", 0) == 1
+    assert outcomes.get("passed", 0) == 2
     assert outcomes.get("skipped", 0) in (0, 2)
 
     lines = snapshot_log.read_text(encoding="utf-8").strip().splitlines()
     assert "StartClass.root_method|root" in lines
     assert "Child.child_method|child-hooked" in lines
+
+
+def test_plugin_reports_successful_autotest_cases(pytester: pytest.Pytester) -> None:
+    project_root = Path(__file__).resolve().parents[1]
+
+    pytester.syspathinsert(project_root)
+    pytester.makeini("""
+        [pytest]
+        autotest_start_class = sample_lib.StartClass
+        """)
+    pytester.makepyfile(sample_lib="""
+        from human_requests import autotest
+
+        class Response:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def json(self):
+                return self.payload
+
+        def first_helper(value):
+            return second_helper(value)
+
+        def second_helper(value):
+            return value + 1
+
+        class StartClass:
+            def __init__(self):
+                self.parent = None
+
+            @autotest
+            async def root_method(self):
+                return Response({"value": "root"})
+
+            @autotest
+            async def child_method(self):
+                return Response({"value": "child"})
+        """)
+    pytester.makeconftest("""
+        import pytest
+        from sample_lib import StartClass
+
+        class _SchemaShot:
+            def assert_json_match(self, data, func):
+                return None
+
+        @pytest.fixture
+        def api():
+            return StartClass()
+
+        @pytest.fixture
+        def schemashot():
+            return _SchemaShot()
+        """)
+
+    result = pytester.runpytest(
+        "-q",
+        "-p",
+        "no:anyio",
+        "-p",
+        "no:human_requests_autotest",
+        "-p",
+        "human_requests.pytest_plugin",
+    )
+
+    stdout = _strip_ansi(result.stdout.str())
+    assert result.ret == 0
+    assert "2 passed" in stdout
+    assert "autotest case passed" not in stdout
+    assert "API method passed" not in stdout
 
 
 def test_plugin_applies_trace_limit_from_ini(pytester: pytest.Pytester) -> None:
@@ -299,7 +369,7 @@ def test_plugin_uses_subtests_fixture_for_each_autotest_case(pytester: pytest.Py
         "human_requests.pytest_plugin",
     )
     outcomes = result.parseoutcomes()
-    assert outcomes.get("passed", 0) == 1
+    assert outcomes.get("passed", 0) == 2
     assert outcomes.get("skipped", 0) in (0, 2)
 
     subtest_labels = set(subtests_log.read_text(encoding="utf-8").strip().splitlines())
@@ -659,7 +729,7 @@ def test_plugin_supports_dependency_marker_on_params(pytester: pytest.Pytester) 
         "-p",
         "human_requests.pytest_plugin",
     )
-    result.assert_outcomes(passed=1)
+    result.assert_outcomes(passed=2)
 
     lines = snapshot_log.read_text(encoding="utf-8").strip().splitlines()
     assert lines == [
@@ -736,6 +806,80 @@ def test_plugin_typecheck_strict_fails_on_annotation_mismatch(pytester: pytest.P
             )
         ]
     )
+
+
+def test_plugin_reports_params_provider_crash(pytester: pytest.Pytester) -> None:
+    project_root = Path(__file__).resolve().parents[1]
+
+    pytester.syspathinsert(project_root)
+    pytester.makeini("""
+        [pytest]
+        autotest_start_class = sample_lib.StartClass
+        """)
+    pytester.makepyfile(sample_lib="""
+        from human_requests import autotest
+        from human_requests import autotest_params
+        from human_requests.abstraction import Output
+
+        def first_helper(value):
+            return second_helper(value)
+
+        def second_helper(value):
+            return 1 / value
+
+        class Response:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def json(self):
+                return self.payload
+
+        class StartClass:
+            def __init__(self):
+                self.parent = None
+
+            @autotest
+            async def typed(self, item_id: int):
+                return Output(raw='{}')
+
+        @autotest_params(target=StartClass.typed)
+        def _params(_ctx):
+            return {"item_id": first_helper(0)}
+        """)
+    pytester.makeconftest("""
+        import pytest
+        from sample_lib import StartClass
+
+        class _SchemaShot:
+            def assert_json_match(self, data, func):
+                return None
+
+        @pytest.fixture
+        def api():
+            return StartClass()
+
+        @pytest.fixture
+        def schemashot():
+            return _SchemaShot()
+        """)
+
+    result = pytester.runpytest(
+        "-q",
+        "-p",
+        "no:anyio",
+        "-p",
+        "no:human_requests_autotest",
+        "-p",
+        "human_requests.pytest_plugin",
+    )
+
+    stdout = _strip_ansi(result.stdout.str())
+    assert result.ret != 0
+    assert "Autotest params preparation crashed" in stdout
+    assert "Params   _params" in stdout
+    assert "def _params(_ctx)" in stdout
+    assert "def first_helper(value)" in stdout
+    assert "def second_helper(value)" in stdout
 
 
 def test_plugin_rejects_invalid_typecheck_mode(pytester: pytest.Pytester) -> None:
