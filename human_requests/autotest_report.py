@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import inspect
 import io
+import os
 import linecache
 import sys
 from pathlib import Path
@@ -499,6 +500,8 @@ def _render_source_excerpt(
     if isinstance(source_end_lineno, int):
         end_bound = min(source_end_lineno, len(lines))
 
+    common_indent = _common_leading_whitespace_prefix(lines, start=start_bound, end=end_bound)
+    common_indent_len = len(common_indent)
     head_start = start_bound
     head_end = min(start_bound + max(truncation_context_lines, 0) + 1, end_bound)
     tail_start = max(error_line_index - context_lines, start_bound)
@@ -515,6 +518,8 @@ def _render_source_excerpt(
             error_lineno=frame.lineno,
             colno=getattr(frame, "colno", None),
             end_colno=getattr(frame, "end_colno", None),
+            common_indent=common_indent,
+            common_indent_len=common_indent_len,
         )
         if tail_end < end_bound:
             rendered.append(_render_truncated_notice(line_no_width))
@@ -528,6 +533,8 @@ def _render_source_excerpt(
         error_lineno=frame.lineno,
         colno=getattr(frame, "colno", None),
         end_colno=getattr(frame, "end_colno", None),
+        common_indent=common_indent,
+        common_indent_len=common_indent_len,
     )
     if not rendered:
         return ["<source unavailable>"]
@@ -541,6 +548,8 @@ def _render_source_excerpt(
         error_lineno=frame.lineno,
         colno=getattr(frame, "colno", None),
         end_colno=getattr(frame, "end_colno", None),
+        common_indent=common_indent,
+        common_indent_len=common_indent_len,
     )
     if tail_rendered:
         rendered.extend(tail_rendered)
@@ -558,6 +567,8 @@ def _render_source_excerpt_range(
     error_lineno: int,
     colno: int | None,
     end_colno: int | None,
+    common_indent: str,
+    common_indent_len: int,
 ) -> list[str]:
     if start >= end:
         return []
@@ -574,6 +585,8 @@ def _render_source_excerpt_range(
     for index in range(start, end):
         line_no = index + 1
         source_line = lines[index].rstrip("\r\n")
+        if common_indent and source_line.startswith(common_indent):
+            source_line = source_line[common_indent_len:]
         rendered_source = _highlight_python_source_line(source_line)
         rendered.append(f"{line_no:>{line_no_width}} │ {rendered_source}")
 
@@ -583,14 +596,34 @@ def _render_source_excerpt_range(
         if not isinstance(colno, int):
             continue
 
+        display_colno = max(colno - common_indent_len, 0)
         pointer_width = 1
         if isinstance(end_colno, int) and end_colno > colno:
-            pointer_width = end_colno - colno
+            display_end_colno = max(end_colno - common_indent_len, display_colno + 1)
+            pointer_width = display_end_colno - display_colno
 
-        pointer = " " * max(colno, 0) + "^" * max(pointer_width, 1)
+        pointer = " " * display_colno + "^" * max(pointer_width, 1)
         rendered.append(f"{' ' * line_no_width} │ {pointer}")
 
     return rendered
+
+
+def _common_leading_whitespace_prefix(lines: list[str], *, start: int, end: int) -> str:
+    prefixes: list[str] = []
+    for index in range(start, end):
+        source_line = lines[index].rstrip("\r\n")
+        if not source_line.strip():
+            continue
+
+        whitespace_end = 0
+        while whitespace_end < len(source_line) and source_line[whitespace_end] in " \t":
+            whitespace_end += 1
+        prefixes.append(source_line[:whitespace_end])
+
+    if not prefixes:
+        return ""
+
+    return os.path.commonprefix(prefixes)
 
 
 def _render_truncated_notice(line_no_width: int) -> str:

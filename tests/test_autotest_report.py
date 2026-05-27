@@ -205,3 +205,42 @@ class Api:
     assert "def f(value)" in report
     assert report.index("def tree(self)") < report.index("def delim_na_null(value)")
     assert report.index("def delim_na_null(value)") < report.index("def f(value)")
+
+
+@pytest.mark.asyncio
+async def test_method_crash_report_strips_shared_indentation_from_excerpt(tmp_path: Path) -> None:
+    module_path = tmp_path / "sample_api.py"
+    module_path.write_text(
+        """from human_requests import autotest
+
+class Api:
+    def __init__(self):
+        self.parent = None
+
+    @autotest
+    async def products_list(self):
+        return _response(
+            {
+                "products": [
+                    {
+                        "id": 1,
+                    }
+                ]
+            }
+        )
+""",
+        encoding="utf-8",
+    )
+
+    module = _load_module(module_path, "sample_api_dedent")
+    api = module.Api()
+
+    with pytest.raises(AutotestMethodCrash) as excinfo:
+        await execute_autotests(api=api, schemashot=_SchemaShotSpy(), truncation_context_lines=20)
+
+    report = _strip_ansi(excinfo.value.report)
+
+    assert re.search(r"^\s*\d+ │ @autotest$", report, re.MULTILINE)
+    assert re.search(r"^\s*\d+ │ async def products_list\(self\):$", report, re.MULTILINE)
+    assert re.search(r"^\s*\d+ │     return _response\(", report, re.MULTILINE)
+    assert "│         return _response(" not in report

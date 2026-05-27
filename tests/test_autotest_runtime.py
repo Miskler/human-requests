@@ -222,6 +222,9 @@ async def test_method_crash_report_uses_custom_truncation_context_lines() -> Non
     assert "suffix_5 = 1" not in default_report
     assert "prefix_5 = 1" in custom_report
     assert "suffix_5 = 1" in custom_report
+    assert re.search(r"^\s*\d+ │     prefix_5 = 1$", custom_report, re.MULTILINE)
+    assert re.search(r"^\s*\d+ │     suffix_5 = 1$", custom_report, re.MULTILINE)
+    assert not re.search(r"^\s*\d+ │ suffix_5 = 1$", custom_report, re.MULTILINE)
     assert "suffix_6 = 1" not in custom_report
 
 
