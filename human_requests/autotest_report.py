@@ -7,6 +7,7 @@ import linecache
 import sys
 from pathlib import Path
 import traceback
+from types import FrameType
 from types import TracebackType
 from typing import Any, Callable, NoReturn
 
@@ -33,6 +34,10 @@ class AutotestCrashData:
 class AutotestSourceLocation:
     filename: str
     lineno: int
+    start_lineno: int | None = None
+    end_lineno: int | None = None
+    colno: int | None = None
+    end_colno: int | None = None
 
 
 @dataclass(frozen=True)
@@ -78,6 +83,8 @@ def build_autotest_method_crash_report(
     func: AutotestFunction,
     error: BaseException,
     context_lines: int = 3,
+    trace_limit: int = 3,
+    truncation_context_lines: int = 3,
 ) -> str:
     return _build_autotest_crash_data(
         api=api,
@@ -86,6 +93,8 @@ def build_autotest_method_crash_report(
         subject_value=getattr(func, "__qualname__", repr(func)),
         error=error,
         context_lines=context_lines,
+        trace_limit=trace_limit,
+        truncation_context_lines=truncation_context_lines,
     ).report
 
 
@@ -95,6 +104,8 @@ def build_autotest_hook_crash_report(
     hook: AutotestFunction,
     error: BaseException,
     context_lines: int = 3,
+    trace_limit: int = 3,
+    truncation_context_lines: int = 3,
 ) -> str:
     return _build_autotest_crash_data(
         api=api,
@@ -103,6 +114,8 @@ def build_autotest_hook_crash_report(
         subject_value=getattr(hook, "__qualname__", repr(hook)),
         error=error,
         context_lines=context_lines,
+        trace_limit=trace_limit,
+        truncation_context_lines=truncation_context_lines,
     ).report
 
 
@@ -113,6 +126,8 @@ def raise_autotest_method_crash(
     error: BaseException,
     source_func: AutotestFunction | None = None,
     detail_message: str | None = None,
+    trace_limit: int = 3,
+    truncation_context_lines: int = 3,
 ) -> NoReturn:
     raise AutotestMethodCrash(
         _build_autotest_crash_data(
@@ -121,9 +136,11 @@ def raise_autotest_method_crash(
             subject_label="Method",
             subject_value=getattr(func, "__qualname__", repr(func)),
             error=error,
-            context_lines=3,
+            context_lines=truncation_context_lines,
             source_func=source_func,
             detail_message=detail_message,
+            trace_limit=trace_limit,
+            truncation_context_lines=truncation_context_lines,
         )
     )
 
@@ -138,6 +155,8 @@ def raise_autotest_hook_crash(
     subject_value: str | None = None,
     source_func: AutotestFunction | None = None,
     detail_message: str | None = None,
+    trace_limit: int = 3,
+    truncation_context_lines: int = 3,
 ) -> NoReturn:
     raise AutotestHookCrash(
         _build_autotest_crash_data(
@@ -146,9 +165,11 @@ def raise_autotest_hook_crash(
             subject_label=subject_label,
             subject_value=subject_value or getattr(hook, "__qualname__", repr(hook)),
             error=error,
-            context_lines=3,
+            context_lines=truncation_context_lines,
             source_func=source_func,
             detail_message=detail_message,
+            trace_limit=trace_limit,
+            truncation_context_lines=truncation_context_lines,
         )
     )
 
@@ -161,15 +182,29 @@ def _build_autotest_crash_data(
     subject_value: str,
     error: BaseException,
     context_lines: int,
+    trace_limit: int,
+    truncation_context_lines: int,
     source_func: AutotestFunction | None = None,
     detail_message: str | None = None,
 ) -> AutotestCrashData:
     code_root = _resolve_code_root(api)
-    frame = _select_source_frame(error.__traceback__, code_root)
-    if source_func is not None:
+    trace_frames = _traceback_source_locations(error.__traceback__, code_root)
+    frame = _select_source_frame(
+        trace_frames,
+        code_root,
+        source_func=source_func,
+    )
+    if frame is None and source_func is not None:
         source_frame = _source_location_from_callable(source_func)
         if source_frame is not None:
             frame = source_frame
+
+    if frame is not None:
+        trace_frames = _drop_trace_source_frame(
+            trace_frames,
+            filename=frame.filename,
+            lineno=frame.lineno,
+        )
 
     rows = [
         AutotestPanelRow(
@@ -197,28 +232,35 @@ def _build_autotest_crash_data(
 
     lines = _render_panel(title, rows)
     lines.append("")
-    lines.append("Source:")
-
     if frame is None:
+        lines.append("Source:")
         lines.append("<source unavailable>")
-        return AutotestCrashData(
-            summary_message=title,
-            detail_message=detail_message or _format_error_message(error),
-            report="\n".join(lines),
-            source_path="<source unavailable>",
-            source_lineno=0,
+        source_path = "<source unavailable>"
+        source_lineno = 0
+    else:
+        source_path = _format_source_path(frame.filename, code_root)
+        source_lineno = frame.lineno
+        rendered_frames = [frame]
+        rendered_frames.extend(trace_frames)
+        if trace_limit > 0:
+            rendered_frames = rendered_frames[-trace_limit:]
+        else:
+            rendered_frames = []
+        lines.extend(
+            _render_source_chain(
+                rendered_frames,
+                code_root=code_root,
+                context_lines=context_lines,
+                truncation_context_lines=truncation_context_lines,
+            )
         )
 
-    source_path = _format_source_path(frame.filename, code_root)
-    lines.append(f"{source_path}:{frame.lineno}")
-    lines.append("")
-    lines.extend(_render_source_excerpt(frame, context_lines=context_lines))
     return AutotestCrashData(
         summary_message=title,
         detail_message=detail_message or _format_error_message(error),
         report="\n".join(lines),
         source_path=source_path,
-        source_lineno=frame.lineno,
+        source_lineno=source_lineno,
     )
 
 
@@ -246,15 +288,20 @@ def _resolve_code_root(api: object) -> Path | None:
 
 
 def _select_source_frame(
-    tb: TracebackType | None,
+    frames: list[AutotestSourceLocation],
     code_root: Path | None,
+    *,
+    source_func: AutotestFunction | None = None,
 ):
-    if tb is None:
-        return None
-
-    frames = list(traceback.extract_tb(tb))
     if not frames:
         return None
+
+    if source_func is not None:
+        source_location = _source_location_from_callable(source_func)
+        if source_location is not None:
+            for frame in frames:
+                if _frame_matches_location(frame, source_location):
+                    return frame
 
     if code_root is None:
         return frames[-1]
@@ -269,16 +316,132 @@ def _select_source_frame(
     return frames[-1]
 
 
-def _source_location_from_callable(func: AutotestFunction) -> AutotestSourceLocation | None:
+def _traceback_source_locations(
+    tb: TracebackType | None,
+    code_root: Path | None,
+) -> list[AutotestSourceLocation]:
+    if tb is None:
+        return []
+
+    summaries = list(traceback.extract_tb(tb))
+    walk_frames = list(traceback.walk_tb(tb))
+    if not summaries or not walk_frames:
+        return []
+
+    locations: list[AutotestSourceLocation] = []
+    for summary, (frame, lineno) in zip(summaries, walk_frames):
+        if code_root is not None and not _is_within_root(summary.filename, code_root):
+            continue
+
+        location = _source_location_from_traceback_frame(
+            frame,
+            lineno,
+            colno=summary.colno,
+            end_colno=summary.end_colno,
+        )
+        if location is None:
+            location = AutotestSourceLocation(
+                filename=summary.filename,
+                lineno=summary.lineno,
+                colno=summary.colno,
+                end_colno=summary.end_colno,
+            )
+        locations.append(location)
+
+    return locations
+
+
+def _drop_trace_source_frame(
+    frames: list[AutotestSourceLocation],
+    *,
+    filename: str,
+    lineno: int,
+) -> list[AutotestSourceLocation]:
+    resolved_filename = Path(filename).resolve()
+    filtered: list[AutotestSourceLocation] = []
+    skipped = False
+
+    for frame in frames:
+        try:
+            frame_filename = Path(frame.filename).resolve()
+        except OSError:
+            frame_filename = Path(frame.filename)
+
+        if not skipped and frame_filename == resolved_filename and frame.lineno == lineno:
+            skipped = True
+            continue
+        filtered.append(frame)
+
+    return filtered
+
+
+def _frame_matches_location(frame: traceback.FrameSummary, location: AutotestSourceLocation) -> bool:
     try:
-        source_file = inspect.getsourcefile(func) or inspect.getfile(func)
-        _, lineno = inspect.getsourcelines(func)
+        frame_path = Path(frame.filename).resolve()
+        location_path = Path(location.filename).resolve()
+    except OSError:
+        return False
+
+    if frame_path != location_path:
+        return False
+
+    if location.start_lineno is not None and frame.lineno < location.start_lineno:
+        return False
+    if location.end_lineno is not None and frame.lineno > location.end_lineno:
+        return False
+    return True
+
+
+def _source_location_from_traceback_frame(
+    frame: FrameType,
+    lineno: int,
+    *,
+    colno: int | None = None,
+    end_colno: int | None = None,
+) -> AutotestSourceLocation | None:
+    try:
+        source_file = inspect.getsourcefile(frame) or inspect.getfile(frame)
+        source_lines, start_lineno = inspect.getsourcelines(frame)
     except (OSError, TypeError):
         return None
 
     if not source_file:
         return None
-    return AutotestSourceLocation(filename=str(Path(source_file).resolve()), lineno=lineno)
+
+    end_lineno = start_lineno + len(source_lines) - 1
+    return AutotestSourceLocation(
+        filename=str(Path(source_file).resolve()),
+        lineno=lineno,
+        start_lineno=start_lineno,
+        end_lineno=end_lineno,
+        colno=colno,
+        end_colno=end_colno,
+    )
+
+
+def _source_location_from_callable(func: AutotestFunction) -> AutotestSourceLocation | None:
+    try:
+        source_file = inspect.getsourcefile(func) or inspect.getfile(func)
+        source_lines, start_lineno = inspect.getsourcelines(func)
+    except (OSError, TypeError):
+        return None
+
+    if not source_file:
+        return None
+
+    end_lineno = start_lineno + len(source_lines) - 1
+    focus_offset = 0
+    for index in range(len(source_lines) - 1, -1, -1):
+        if source_lines[index].strip():
+            focus_offset = index
+            break
+
+    return AutotestSourceLocation(
+        filename=str(Path(source_file).resolve()),
+        lineno=start_lineno + focus_offset,
+        start_lineno=start_lineno,
+        end_lineno=end_lineno,
+    )
 
 
 def _is_within_root(filename: str, code_root: Path) -> bool:
@@ -311,7 +474,12 @@ def _format_source_path(filename: str, code_root: Path | None) -> str:
         return path.as_posix()
 
 
-def _render_source_excerpt(frame: Any, *, context_lines: int) -> list[str]:
+def _render_source_excerpt(
+    frame: Any,
+    *,
+    context_lines: int,
+    truncation_context_lines: int,
+) -> list[str]:
     if frame.filename.startswith("<") and frame.filename.endswith(">"):
         return ["<source unavailable>"]
 
@@ -321,15 +489,86 @@ def _render_source_excerpt(frame: Any, *, context_lines: int) -> list[str]:
         return ["<source unavailable>"]
 
     error_line_index = max(frame.lineno - 1, 0)
-    start = max(error_line_index - context_lines, 0)
-    end = min(error_line_index + context_lines + 1, len(lines))
+    start_bound = 0
+    end_bound = len(lines)
+
+    source_start_lineno = getattr(frame, "start_lineno", None)
+    source_end_lineno = getattr(frame, "end_lineno", None)
+    if isinstance(source_start_lineno, int):
+        start_bound = max(source_start_lineno - 1, 0)
+    if isinstance(source_end_lineno, int):
+        end_bound = min(source_end_lineno, len(lines))
+
+    head_start = start_bound
+    head_end = min(start_bound + max(truncation_context_lines, 0) + 1, end_bound)
+    tail_start = max(error_line_index - context_lines, start_bound)
+    tail_end = min(error_line_index + context_lines + 1, end_bound)
+
+    line_no_width = len(str(end_bound))
+
+    if head_end >= tail_start:
+        rendered = _render_source_excerpt_range(
+            lines,
+            start=head_start,
+            end=tail_end,
+            line_no_width=line_no_width,
+            error_lineno=frame.lineno,
+            colno=getattr(frame, "colno", None),
+            end_colno=getattr(frame, "end_colno", None),
+        )
+        if tail_end < end_bound:
+            rendered.append(_render_truncated_notice(line_no_width))
+        return rendered
+
+    rendered = _render_source_excerpt_range(
+        lines,
+        start=head_start,
+        end=head_end,
+        line_no_width=line_no_width,
+        error_lineno=frame.lineno,
+        colno=getattr(frame, "colno", None),
+        end_colno=getattr(frame, "end_colno", None),
+    )
+    if not rendered:
+        return ["<source unavailable>"]
+
+    rendered.append(_render_truncated_notice(line_no_width))
+    tail_rendered = _render_source_excerpt_range(
+        lines,
+        start=tail_start,
+        end=tail_end,
+        line_no_width=line_no_width,
+        error_lineno=frame.lineno,
+        colno=getattr(frame, "colno", None),
+        end_colno=getattr(frame, "end_colno", None),
+    )
+    if tail_rendered:
+        rendered.extend(tail_rendered)
+    if tail_end < end_bound:
+        rendered.append(_render_truncated_notice(line_no_width))
+    return rendered
+
+
+def _render_source_excerpt_range(
+    lines: list[str],
+    *,
+    start: int,
+    end: int,
+    line_no_width: int,
+    error_lineno: int,
+    colno: int | None,
+    end_colno: int | None,
+) -> list[str]:
+    if start >= end:
+        return []
 
     while start < end and not lines[start].strip():
         start += 1
     while end > start and not lines[end - 1].strip():
         end -= 1
 
-    line_no_width = len(str(end))
+    if start >= end:
+        return []
 
     rendered: list[str] = []
     for index in range(start, end):
@@ -338,11 +577,9 @@ def _render_source_excerpt(frame: Any, *, context_lines: int) -> list[str]:
         rendered_source = _highlight_python_source_line(source_line)
         rendered.append(f"{line_no:>{line_no_width}} │ {rendered_source}")
 
-        if line_no != frame.lineno:
+        if line_no != error_lineno:
             continue
 
-        colno = getattr(frame, "colno", None)
-        end_colno = getattr(frame, "end_colno", None)
         if not isinstance(colno, int):
             continue
 
@@ -354,6 +591,41 @@ def _render_source_excerpt(frame: Any, *, context_lines: int) -> list[str]:
         rendered.append(f"{' ' * line_no_width} │ {pointer}")
 
     return rendered
+
+
+def _render_truncated_notice(line_no_width: int) -> str:
+    return (
+        f"{' ' * line_no_width} │ "
+        + _render_styled_text("[log content truncated]", style="bold bright_black")
+    )
+
+
+def _render_source_chain(
+    frames: list[AutotestSourceLocation],
+    *,
+    code_root: Path | None,
+    context_lines: int,
+    truncation_context_lines: int,
+) -> list[str]:
+    if not frames:
+        return []
+
+    lines: list[str] = []
+    for index, frame in enumerate(frames):
+        if index > 0:
+            lines.append("")
+        lines.append("Source:")
+        source_path = _format_source_path(frame.filename, code_root)
+        lines.append(f"{source_path}:{frame.lineno}")
+        lines.append("")
+        lines.extend(
+            _render_source_excerpt(
+                frame,
+                context_lines=context_lines,
+                truncation_context_lines=truncation_context_lines,
+            )
+        )
+    return lines
 
 
 def _highlight_python_source_line(source_line: str) -> str:

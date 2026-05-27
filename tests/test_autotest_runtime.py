@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import inspect
+import re
 from typing import Any
 
 import pytest
@@ -19,6 +21,7 @@ from human_requests.autotest import (
     execute_autotests,
     find_autotest_policy,
 )
+from human_requests.autotest_report import AutotestMethodCrash
 
 
 @dataclass
@@ -70,6 +73,14 @@ class _SchemaShotSpy:
         self.calls.append((snapshot_name, data))
 
 
+def _strip_ansi(text: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
+def _source_blocks(report: str) -> list[str]:
+    return report.split("\n\nSource:\n")[1:]
+
+
 @pytest.fixture(autouse=True)
 def _reset_hooks() -> None:
     clear_autotest_hooks()
@@ -90,6 +101,171 @@ def test_discover_autotest_methods_parent_context() -> None:
     assert by_name["b_method"].parent is api
     assert by_name["c_method"].owner is api.b.c
     assert by_name["c_method"].parent is api.b
+
+
+@pytest.mark.asyncio
+async def test_method_crash_report_trims_method_from_source_chain_when_limit_is_exceeded() -> None:
+    def first_helper(value: int) -> int:
+        return second_helper(value)
+
+
+
+    def second_helper(value: int) -> int:
+        return third_helper(value)
+
+
+
+    def third_helper(value: int) -> int:
+        return 1 / value
+
+    class _CrashApi:
+        def __init__(self) -> None:
+            self.parent = None
+
+        @autotest
+        async def tree(self) -> int:
+            return first_helper(0)
+
+    api = _CrashApi()
+    schemashot = _SchemaShotSpy()
+
+    with pytest.raises(AutotestMethodCrash) as excinfo:
+        await execute_autotests(api=api, schemashot=schemashot)
+
+    crash = excinfo.value
+    report = _strip_ansi(crash.report)
+    source_blocks = _source_blocks(report)
+    source_lines, start_lineno = inspect.getsourcelines(_CrashApi.tree)
+    expected_lineno = start_lineno + max(
+        index for index, line in enumerate(source_lines) if line.strip()
+    )
+
+    assert crash.source_lineno == expected_lineno
+    assert "Trace:" not in report
+    assert report.count("Source:") == 3
+    assert len(source_blocks) == 3
+    assert "async def tree(self)" not in report
+    assert "def first_helper" in source_blocks[0]
+    assert "return second_helper(value)" in source_blocks[0]
+    assert "^" in source_blocks[0]
+    assert "def second_helper" in source_blocks[1]
+    assert "return third_helper(value)" in source_blocks[1]
+    assert "^" in source_blocks[1]
+    assert "def third_helper" in source_blocks[2]
+    assert "return 1 / value" in source_blocks[2]
+    assert "^" in source_blocks[2]
+    assert "return first_helper(0)" not in report
+
+
+@pytest.mark.asyncio
+async def test_method_crash_report_uses_custom_truncation_context_lines() -> None:
+    def first_helper(value: int) -> int:
+        return second_helper(value)
+
+
+    def second_helper(value: int) -> int:
+        return third_helper(value)
+
+
+    def third_helper(value: int) -> int:
+        prefix_1 = 1
+        prefix_2 = 1
+        prefix_3 = 1
+        prefix_4 = 1
+        prefix_5 = 1
+        prefix_6 = 1
+        prefix_7 = 1
+        prefix_8 = 1
+        prefix_9 = 1
+        prefix_10 = 1
+        prefix_11 = 1
+        prefix_12 = 1
+        return 1 / value
+        suffix_1 = 1
+        suffix_2 = 1
+        suffix_3 = 1
+        suffix_4 = 1
+        suffix_5 = 1
+        suffix_6 = 1
+        suffix_7 = 1
+        suffix_8 = 1
+        suffix_9 = 1
+        suffix_10 = 1
+        suffix_11 = 1
+        suffix_12 = 1
+
+    class _CrashApi:
+        def __init__(self) -> None:
+            self.parent = None
+
+        @autotest
+        async def tree(self) -> int:
+            return first_helper(0)
+
+    api = _CrashApi()
+    schemashot = _SchemaShotSpy()
+
+    with pytest.raises(AutotestMethodCrash) as default_excinfo:
+        await execute_autotests(api=api, schemashot=schemashot)
+
+    with pytest.raises(AutotestMethodCrash) as custom_excinfo:
+        await execute_autotests(
+            api=_CrashApi(),
+            schemashot=_SchemaShotSpy(),
+            truncation_context_lines=5,
+        )
+
+    default_report = _strip_ansi(default_excinfo.value.report)
+    custom_report = _strip_ansi(custom_excinfo.value.report)
+
+    assert "prefix_5 = 1" not in default_report
+    assert "suffix_5 = 1" not in default_report
+    assert "prefix_5 = 1" in custom_report
+    assert "suffix_5 = 1" in custom_report
+    assert "suffix_6 = 1" not in custom_report
+
+
+@pytest.mark.asyncio
+async def test_method_crash_trace_limit_keeps_only_tail_frame() -> None:
+    def first_helper(value: int) -> int:
+        return second_helper(value)
+
+
+
+    def second_helper(value: int) -> int:
+        return third_helper(value)
+
+
+
+    def third_helper(value: int) -> int:
+        return 1 / value
+
+    class _CrashApi:
+        def __init__(self) -> None:
+            self.parent = None
+
+        @autotest
+        async def tree(self) -> int:
+            return first_helper(0)
+
+    api = _CrashApi()
+    schemashot = _SchemaShotSpy()
+
+    with pytest.raises(AutotestMethodCrash) as excinfo:
+        await execute_autotests(api=api, schemashot=schemashot, trace_limit=1)
+
+    report = _strip_ansi(excinfo.value.report)
+    source_blocks = _source_blocks(report)
+
+    assert "Trace:" not in report
+    assert report.count("Source:") == 1
+    assert len(source_blocks) == 1
+    assert "def third_helper" in source_blocks[0]
+    assert "return 1 / value" in source_blocks[0]
+    assert "^" in source_blocks[0]
+    assert "async def tree(self)" not in report
+    assert "def first_helper" not in report
+    assert "def second_helper" not in report
 
 
 @pytest.mark.asyncio

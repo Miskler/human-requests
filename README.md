@@ -135,6 +135,8 @@ Minimal `pytest.ini`:
 anyio_mode = auto
 autotest_start_class = your_package.StartClass
 autotest_typecheck = warn
+autotest_trace_limit = 3
+autotest_truncation_context_lines = 3
 ```
 
 `autotest_typecheck` modes:
@@ -142,6 +144,14 @@ autotest_typecheck = warn
 - `off` (default): no runtime type checks for params provider arguments
 - `warn`: emit `RuntimeWarning` on annotation mismatch
 - `strict`: fail test case with `TypeError` on mismatch
+
+`autotest_trace_limit` controls how many `Source:` blocks are kept from the end
+of a crash report call chain. The default is `3`; set it to `0` to hide the
+source chain entirely.
+
+`autotest_truncation_context_lines` controls how many source context lines are
+kept on each side of a split crash-report excerpt before `[log content
+truncated]`. The function header itself is always shown. The default is `3`.
 
 Minimal fixtures:
 

@@ -6,7 +6,9 @@ from typing import Any
 
 import pytest
 
-from ._constants import AUTOTEST_INI_KEY, AUTOTEST_TYPECHECK_INI_KEY, VALID_TYPECHECK_MODES
+from ._constants import AUTOTEST_INI_KEY, AUTOTEST_TYPECHECK_INI_KEY
+from ._constants import AUTOTEST_TRACE_LIMIT_INI_KEY, AUTOTEST_TRUNCATION_CONTEXT_LINES_INI_KEY
+from ._constants import VALID_TYPECHECK_MODES
 
 
 def register_ini_options(parser: pytest.Parser) -> None:
@@ -19,6 +21,22 @@ def register_ini_options(parser: pytest.Parser) -> None:
         AUTOTEST_TYPECHECK_INI_KEY,
         default="off",
         help="Autotest params type checking mode: off, warn, strict.",
+    )
+    parser.addini(
+        AUTOTEST_TRACE_LIMIT_INI_KEY,
+        default="3",
+        help=(
+            "Maximum number of Source blocks shown in crash reports. Use 0 to "
+            "hide the source chain."
+        ),
+    )
+    parser.addini(
+        AUTOTEST_TRUNCATION_CONTEXT_LINES_INI_KEY,
+        default="3",
+        help=(
+            "How many source context lines to keep on each side of a split crash "
+            "report excerpt before [log content truncated]."
+        ),
     )
 
 
@@ -37,6 +55,48 @@ def get_typecheck_mode(config: pytest.Config) -> str:
     raise pytest.UsageError(
         f"Invalid {AUTOTEST_TYPECHECK_INI_KEY} value {raw!r}. Expected one of: {expected}."
     )
+
+
+def get_trace_limit(config: pytest.Config) -> int:
+    raw = str(config.getini(AUTOTEST_TRACE_LIMIT_INI_KEY)).strip()
+    if not raw:
+        return 3
+
+    try:
+        value = int(raw)
+    except ValueError as error:
+        raise pytest.UsageError(
+            f"Invalid {AUTOTEST_TRACE_LIMIT_INI_KEY} value {raw!r}. "
+            "Expected a non-negative integer."
+        ) from error
+
+    if value < 0:
+        raise pytest.UsageError(
+            f"Invalid {AUTOTEST_TRACE_LIMIT_INI_KEY} value {raw!r}. "
+            "Expected a non-negative integer."
+        )
+    return value
+
+
+def get_truncation_context_lines(config: pytest.Config) -> int:
+    raw = str(config.getini(AUTOTEST_TRUNCATION_CONTEXT_LINES_INI_KEY)).strip()
+    if not raw:
+        return 3
+
+    try:
+        value = int(raw)
+    except ValueError as error:
+        raise pytest.UsageError(
+            f"Invalid {AUTOTEST_TRUNCATION_CONTEXT_LINES_INI_KEY} value {raw!r}. "
+            "Expected a non-negative integer."
+        ) from error
+
+    if value < 0:
+        raise pytest.UsageError(
+            f"Invalid {AUTOTEST_TRUNCATION_CONTEXT_LINES_INI_KEY} value {raw!r}. "
+            "Expected a non-negative integer."
+        )
+    return value
 
 
 def resolve_runtime_dependencies(request: pytest.FixtureRequest) -> tuple[object, Any]:

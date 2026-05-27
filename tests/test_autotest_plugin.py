@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 from pathlib import Path
 
 import pytest
 
 from human_requests.autotest import clear_autotest_hooks
+from human_requests.pytest_plugin._config import get_trace_limit
+from human_requests.pytest_plugin._config import get_truncation_context_lines
 
 pytest_plugins = ["pytester"]
 
@@ -22,6 +25,51 @@ def _has_subtests_support() -> bool:
         importlib.util.find_spec("pytest_subtests") is not None
         or importlib.util.find_spec("_pytest.subtests") is not None
     )
+
+
+def _strip_ansi(text: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
+class _IniConfig:
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+    def getini(self, key: str) -> str:
+        del key
+        return self.value
+
+
+def test_plugin_parses_truncation_context_lines() -> None:
+    assert get_truncation_context_lines(_IniConfig("5")) == 5
+    assert get_truncation_context_lines(_IniConfig("   ")) == 3
+
+
+def test_plugin_rejects_invalid_truncation_context_lines() -> None:
+    with pytest.raises(
+        pytest.UsageError,
+        match=(
+            "Invalid autotest_truncation_context_lines value 'maybe'. "
+            "Expected a non-negative integer."
+        ),
+    ):
+        get_truncation_context_lines(_IniConfig("maybe"))
+
+
+def test_plugin_parses_trace_limit() -> None:
+    assert get_trace_limit(_IniConfig("7")) == 7
+    assert get_trace_limit(_IniConfig("   ")) == 3
+
+
+def test_plugin_rejects_invalid_trace_limit() -> None:
+    with pytest.raises(
+        pytest.UsageError,
+        match=(
+            "Invalid autotest_trace_limit value 'maybe'. "
+            "Expected a non-negative integer."
+        ),
+    ):
+        get_trace_limit(_IniConfig("maybe"))
 
 
 def test_plugin_runs_without_manual_tests(pytester: pytest.Pytester) -> None:
@@ -99,6 +147,69 @@ def test_plugin_runs_without_manual_tests(pytester: pytest.Pytester) -> None:
     lines = snapshot_log.read_text(encoding="utf-8").strip().splitlines()
     assert "StartClass.root_method|root" in lines
     assert "Child.child_method|child-hooked" in lines
+
+
+def test_plugin_applies_trace_limit_from_ini(pytester: pytest.Pytester) -> None:
+    project_root = Path(__file__).resolve().parents[1]
+
+    pytester.syspathinsert(project_root)
+    pytester.makeini("""
+        [pytest]
+        autotest_start_class = sample_lib.StartClass
+        autotest_trace_limit = 1
+        """)
+    pytester.makepyfile(sample_lib="""
+        from human_requests import autotest
+
+        def first_helper(value):
+            return second_helper(value)
+
+        def second_helper(value):
+            return third_helper(value)
+
+        def third_helper(value):
+            return 1 / value
+
+        class StartClass:
+            def __init__(self):
+                self.parent = None
+
+            @autotest
+            async def tree(self):
+                return first_helper(0)
+        """)
+    pytester.makeconftest("""
+        import pytest
+        from sample_lib import StartClass
+
+        class _SchemaShot:
+            def assert_json_match(self, data, func):
+                return None
+
+        @pytest.fixture
+        def api():
+            return StartClass()
+
+        @pytest.fixture
+        def schemashot():
+            return _SchemaShot()
+        """)
+
+    result = pytester.runpytest(
+        "-q",
+        "-p",
+        "no:anyio",
+        "-p",
+        "no:human_requests_autotest",
+        "-p",
+        "human_requests.pytest_plugin",
+    )
+
+    assert result.ret != 0
+    stdout = _strip_ansi(result.stdout.str())
+    assert "def third_helper" in stdout
+    assert "def first_helper" not in stdout
+    assert "def second_helper" not in stdout
 
 
 def test_plugin_uses_subtests_fixture_for_each_autotest_case(pytester: pytest.Pytester) -> None:

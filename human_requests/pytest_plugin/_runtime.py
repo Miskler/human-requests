@@ -7,7 +7,8 @@ from typing import Any, TypeVar
 import pytest
 
 from ..autotest import execute_autotests, execute_autotests_with_subtests
-from ._config import get_typecheck_mode, resolve_runtime_dependencies
+from ._config import get_trace_limit, get_truncation_context_lines, get_typecheck_mode
+from ._config import resolve_runtime_dependencies
 
 T = TypeVar("T")
 
@@ -15,12 +16,16 @@ T = TypeVar("T")
 def run_autotest_tree_sync(request: pytest.FixtureRequest) -> None:
     api, schemashot = resolve_runtime_dependencies(request)
     typecheck_mode = get_typecheck_mode(request.config)
+    trace_limit = get_trace_limit(request.config)
+    truncation_context_lines = get_truncation_context_lines(request.config)
     subtests = _resolve_subtests_fixture(request)
     executed_count = run_coroutine(
         _execute_autotests_async(
             api=api,
             schemashot=schemashot,
             typecheck_mode=typecheck_mode,
+            trace_limit=trace_limit,
+            truncation_context_lines=truncation_context_lines,
             subtests=subtests,
         )
     )
@@ -33,6 +38,8 @@ def run_autotest_tree_anyio(request: pytest.FixtureRequest) -> None:
     runner = request.getfixturevalue("_autotest_anyio_runner")
     api, schemashot = resolve_runtime_dependencies(request)
     typecheck_mode = get_typecheck_mode(request.config)
+    trace_limit = get_trace_limit(request.config)
+    truncation_context_lines = get_truncation_context_lines(request.config)
     subtests = _resolve_subtests_fixture(request)
     executed_count = runner.run_test(
         _execute_autotests_async,
@@ -40,6 +47,8 @@ def run_autotest_tree_anyio(request: pytest.FixtureRequest) -> None:
             "api": api,
             "schemashot": schemashot,
             "typecheck_mode": typecheck_mode,
+            "trace_limit": trace_limit,
+            "truncation_context_lines": truncation_context_lines,
             "subtests": subtests,
         },
     )
@@ -60,6 +69,8 @@ async def _execute_autotests_async(
     api: object,
     schemashot: Any,
     typecheck_mode: str,
+    trace_limit: int,
+    truncation_context_lines: int,
     subtests: Any | None = None,
 ) -> int:
     if subtests is not None:
@@ -68,11 +79,15 @@ async def _execute_autotests_async(
             schemashot=schemashot,
             subtests=subtests,
             typecheck_mode=typecheck_mode,
+            trace_limit=trace_limit,
+            truncation_context_lines=truncation_context_lines,
         )
     return await execute_autotests(
         api=api,
         schemashot=schemashot,
         typecheck_mode=typecheck_mode,
+        trace_limit=trace_limit,
+        truncation_context_lines=truncation_context_lines,
     )
 
 

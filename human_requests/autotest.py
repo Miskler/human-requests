@@ -357,6 +357,8 @@ async def execute_autotests(
     schemashot: Any,
     *,
     typecheck_mode: AutotestTypecheckMode | str = "off",
+    trace_limit: int = 3,
+    truncation_context_lines: int = 3,
 ) -> int:
     _validate_schemashot(schemashot)
     resolved_typecheck_mode = _normalize_typecheck_mode(typecheck_mode)
@@ -378,6 +380,8 @@ async def execute_autotests(
                 schemashot=schemashot,
                 state=state,
                 typecheck_mode=resolved_typecheck_mode,
+                trace_limit=trace_limit,
+                truncation_context_lines=truncation_context_lines,
             )
         except BaseException as error:  # pragma: no cover - runtime-only branch for skip semantics
             if _is_pytest_skip_exception(error):
@@ -398,6 +402,8 @@ async def execute_autotests_with_subtests(
     *,
     subtests: AutotestSubtests,
     typecheck_mode: AutotestTypecheckMode | str = "off",
+    trace_limit: int = 3,
+    truncation_context_lines: int = 3,
 ) -> int:
     _validate_schemashot(schemashot)
     resolved_typecheck_mode = _normalize_typecheck_mode(typecheck_mode)
@@ -424,6 +430,8 @@ async def execute_autotests_with_subtests(
                     schemashot=schemashot,
                     state=state,
                     typecheck_mode=resolved_typecheck_mode,
+                    trace_limit=trace_limit,
+                    truncation_context_lines=truncation_context_lines,
                 )
             except BaseException as error:  # pragma: no cover - runtime-only skip branch
                 if _is_pytest_skip_exception(error):
@@ -451,6 +459,8 @@ async def execute_autotest_case(
     schemashot: Any,
     state: dict[str, Any] | None = None,
     typecheck_mode: AutotestTypecheckMode | str = "off",
+    trace_limit: int = 3,
+    truncation_context_lines: int = 3,
 ) -> None:
     _validate_schemashot(schemashot)
     resolved_typecheck_mode = _normalize_typecheck_mode(typecheck_mode)
@@ -474,7 +484,14 @@ async def execute_autotest_case(
         crash_error = error
 
     if crash_error is not None:
-        raise_autotest_method_crash(api=api, func=case.func, error=crash_error)
+        raise_autotest_method_crash(
+            api=api,
+            func=case.func,
+            error=crash_error,
+            source_func=case.func,
+            trace_limit=trace_limit,
+            truncation_context_lines=truncation_context_lines,
+        )
 
     ctx = AutotestContext(
         api=api,
@@ -516,6 +533,8 @@ async def execute_autotest_case(
                 subject_value=case.func.__qualname__,
                 source_func=case.func,
                 detail_message=response_json_detail_message,
+                trace_limit=trace_limit,
+                truncation_context_lines=truncation_context_lines,
             )
 
         hook_error: BaseException | None = None
@@ -531,7 +550,14 @@ async def execute_autotest_case(
                 raise
             hook_error = error
         if hook_error is not None:
-            raise_autotest_hook_crash(api=api, hook=hook, error=hook_error)
+            raise_autotest_hook_crash(
+                api=api,
+                hook=hook,
+                error=hook_error,
+                source_func=hook,
+                trace_limit=trace_limit,
+                truncation_context_lines=truncation_context_lines,
+            )
         if hook_result is not None:
             data = hook_result
     else:
@@ -560,6 +586,8 @@ async def execute_autotest_case(
                 error=response_json_error,
                 source_func=case.func,
                 detail_message=response_json_detail_message,
+                trace_limit=trace_limit,
+                truncation_context_lines=truncation_context_lines,
             )
 
     schemashot.assert_json_match(data, case.func)

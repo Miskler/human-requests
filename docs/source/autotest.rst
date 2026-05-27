@@ -34,6 +34,8 @@ Enable anyio mode and provide the root API class in ``pytest.ini``:
     anyio_mode = auto
     autotest_start_class = your_package.StartClass
     autotest_typecheck = off
+    autotest_trace_limit = 3
+    autotest_truncation_context_lines = 3
 
 ``autotest_start_class`` must be a dotted class path (``module.ClassName``).
 
@@ -46,6 +48,15 @@ against method argument annotations:
 
 If an annotation cannot be resolved at runtime (for example unresolved forward
 reference), that parameter is skipped by the type checker.
+
+``autotest_trace_limit`` controls how many ``Source:`` blocks are kept from the
+end of a crash report call chain. The default is ``3``; set it to ``0`` to hide
+the source chain entirely.
+
+``autotest_truncation_context_lines`` controls how many source context lines are
+kept on each side of a split crash-report excerpt before the
+``[log content truncated]`` marker. The function header itself is always shown.
+The default is ``3``.
 
 
 Required Fixtures
