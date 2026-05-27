@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import inspect
 import json
@@ -88,6 +89,70 @@ class Api:
     assert 'return Output(raw="{")' in report
     assert "async def first(self)" not in report
     assert 'return Output(raw=\'{"ok": true}\')' not in report
+
+
+def test_method_crash_report_formats_source_path_relative_to_cwd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    module_dir = tmp_path / "demo" / "fixprice_api" / "endpoints" / "catalog"
+    module_dir.mkdir(parents=True)
+    for package_dir in (
+        tmp_path / "demo",
+        tmp_path / "demo" / "fixprice_api",
+        tmp_path / "demo" / "fixprice_api" / "endpoints",
+        module_dir,
+    ):
+        (package_dir / "__init__.py").write_text("", encoding="utf-8")
+
+    module_path = module_dir / "catalog.py"
+    module_path.write_text(
+        """from human_requests import autotest
+
+class Catalog:
+    def __init__(self):
+        self.parent = None
+
+    @autotest
+    async def tree(self):
+        return 1 / 0
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.syspath_prepend(str(tmp_path / "demo"))
+    importlib.invalidate_caches()
+    module = importlib.import_module("fixprice_api.endpoints.catalog.catalog")
+
+    try:
+        with pytest.raises(AutotestMethodCrash) as excinfo:
+            raise_autotest_method_crash(
+                api=module.Catalog(),
+                func=module.Catalog.tree,
+                error=ZeroDivisionError("division by zero"),
+                source_func=module.Catalog.tree,
+            )
+
+        crash = excinfo.value
+        report = _strip_ansi(crash.report)
+        expected_path = "demo/fixprice_api/endpoints/catalog/catalog.py"
+
+        assert crash.source_path == expected_path
+        assert crash.to_longrepr().reprcrash.path == expected_path
+        assert re.search(
+            rf"^Source:\n{re.escape(expected_path)}:\d+$",
+            report,
+            re.MULTILINE,
+        )
+    finally:
+        for name in [
+            module_name
+            for module_name in list(sys.modules)
+            if module_name == "fixprice_api" or module_name.startswith("fixprice_api.")
+        ]:
+            sys.modules.pop(name, None)
 
 
 @pytest.mark.asyncio
@@ -244,3 +309,43 @@ class Api:
     assert re.search(r"^\s*\d+ │ async def products_list\(self\):$", report, re.MULTILINE)
     assert re.search(r"^\s*\d+ │     return _response\(", report, re.MULTILINE)
     assert "│         return _response(" not in report
+
+
+def test_method_crash_report_respects_console_width(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "human_requests.autotest_report.Console.width",
+        property(lambda self: 60),
+    )
+
+    class Api:
+        def __init__(self) -> None:
+            self.parent = None
+
+    async def broken(self) -> int:
+        return 1
+
+    long_message = (
+        "The method completed successfully, but autotest expected the returned "
+        "human_requests.abstraction.Output object. Instead it received dict."
+    )
+
+    error = TypeError(long_message)
+
+    with pytest.raises(AutotestMethodCrash) as excinfo:
+        raise_autotest_method_crash(
+            api=Api(),
+            func=broken,
+            error=error,
+            source_func=broken,
+            detail_message=long_message,
+        )
+
+    report = _strip_ansi(excinfo.value.report)
+    panel_lines = []
+    for line in report.splitlines():
+        if line.startswith("Source:"):
+            break
+        panel_lines.append(line)
+
+    assert panel_lines
+    assert max(len(line) for line in panel_lines) <= 60

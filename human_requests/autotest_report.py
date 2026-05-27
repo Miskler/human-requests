@@ -13,6 +13,8 @@ from types import TracebackType
 from typing import Any, Callable, NoReturn
 
 from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 from rich.syntax import Syntax
 from rich.text import Text
 from _pytest._code.code import ReprExceptionInfo
@@ -465,14 +467,21 @@ def _format_source_path(filename: str, code_root: Path | None) -> str:
         return filename
 
     path = Path(filename).resolve()
-    if code_root is None:
-        return path.as_posix()
 
-    base = code_root.parent
+    cwd = Path.cwd().resolve()
     try:
-        return path.relative_to(base).as_posix()
+        return path.relative_to(cwd).as_posix()
     except ValueError:
-        return path.as_posix()
+        pass
+
+    if code_root is not None:
+        base = code_root.parent
+        try:
+            return path.relative_to(base).as_posix()
+        except ValueError:
+            pass
+
+    return path.as_posix()
 
 
 def _render_source_excerpt(
@@ -689,37 +698,32 @@ def _highlight_python_source_line(source_line: str) -> str:
 
 
 def _render_panel(title: str, rows: list[AutotestPanelRow]) -> list[str]:
-    label_width = max(len(row.label) for row in rows)
-    rendered_rows: list[tuple[int, str]] = []
+    table = Table.grid(padding=(0, 2))
+    table.add_column(no_wrap=True)
+    table.add_column(overflow="fold")
+
     for row in rows:
-        rendered_label = _render_styled_text(row.label, style=row.label_style)
-        rendered_label += " " * (label_width - len(row.label))
-        rendered_value = _render_styled_text(
-            row.value,
-            style=row.value_style,
-            highlights=row.value_highlights,
+        table.add_row(
+            Text.from_ansi(_render_styled_text(row.label, style=row.label_style)),
+            Text.from_ansi(
+                _render_styled_text(
+                    row.value,
+                    style=row.value_style,
+                    highlights=row.value_highlights,
+                )
+            ),
         )
-        visible_length = label_width + 2 + len(row.value)
-        rendered_rows.append((visible_length, f"{rendered_label}  {rendered_value}"))
 
-    body_width = max(visible_length for visible_length, _ in rendered_rows)
-    panel_inner_width = body_width + 2
-
-    if len(title) + 2 > panel_inner_width:
-        body_width += len(title) + 2 - panel_inner_width
-        panel_inner_width = body_width + 2
-
-    title_padding = panel_inner_width - len(title) - 2
-    left_padding = title_padding // 2
-    right_padding = title_padding - left_padding
-
-    lines = [
-        f"╭{'─' * left_padding} {title} {'─' * right_padding}╮",
-    ]
-    for visible_length, rendered_row in rendered_rows:
-        lines.append(f"│ {rendered_row}{' ' * (body_width - visible_length)} │")
-    lines.append(f"╰{'─' * panel_inner_width}╯")
-    return lines
+    buffer = io.StringIO()
+    console = Console(
+        file=buffer,
+        force_terminal=True,
+        color_system="standard",
+        legacy_windows=False,
+        width=Console().width,
+    )
+    console.print(Panel(table, title=title, expand=False))
+    return buffer.getvalue().rstrip("\r\n").splitlines()
 
 
 def _render_styled_text(
