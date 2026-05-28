@@ -55,8 +55,14 @@ def test_output_json_prints_rich_debug_on_invalid_json(capsys: pytest.CaptureFix
 
 
 def test_loads_json_debug_truncates_fragment_and_keeps_caret_separator(
-    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from io import StringIO
+
+    from rich.console import Console
+
+    from human_requests.abstraction import json_debug as json_debug_module
+
     text = "\n".join(
         [
             "<!DOCTYPE html>",
@@ -76,15 +82,29 @@ def test_loads_json_debug_truncates_fragment_and_keeps_caret_separator(
         ]
     )
 
+    buffer = StringIO()
+    monkeypatch.setattr(
+        json_debug_module,
+        "console",
+        Console(
+            file=buffer,
+            force_terminal=True,
+            color_system="standard",
+            legacy_windows=False,
+        ),
+    )
+
     with pytest.raises(JSONDecodeError):
         loads_json_debug(text)
 
-    captured = _strip_ansi(capsys.readouterr().out)
+    raw = buffer.getvalue()
+    captured = _strip_ansi(raw)
     assert "JSON parse failed" in captured
     assert "… skipped 6 lines …" in captured
     assert re.search(r"^\s*│\s+\^ here$", captured, re.MULTILINE)
     assert "1 │ <!DOCTYPE html>" in captured
     assert "2 │ <html>" in captured
+    assert len(re.findall(r"\x1b\[2m\s+│ \x1b\[0m", raw)) >= 2
 
 
 def test_output_can_wrap_fetch_response_snapshot() -> None:

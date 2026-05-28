@@ -37,7 +37,7 @@ def _strip_rich_newline(text: Text) -> Text:
 def _render_truncated_notice(line_no_width: int, skipped_lines: int) -> Text:
     suffix = "line" if skipped_lines == 1 else "lines"
     notice = Text()
-    notice.append(f"{' ' * line_no_width} │ ")
+    notice.append(f"{' ' * line_no_width} │ ", style="dim")
     notice.append(f"… skipped {skipped_lines} {suffix} …", style="bold bright_black")
     return notice
 
@@ -108,7 +108,7 @@ def _print_fragment(
             pointer_col = len(visible_before_error)
 
             pointer = Text()
-            pointer.append(f"{' ' * line_no_width} │ ")
+            pointer.append(f"{' ' * line_no_width} │ ", style="dim")
             pointer.append(" " * pointer_col)
             pointer.append("^ here", style="bold red")
 
