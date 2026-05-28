@@ -6,8 +6,8 @@ import linecache
 import os
 import sys
 import traceback
-from json import JSONDecodeError
 from dataclasses import dataclass
+from json import JSONDecodeError
 from pathlib import Path
 from types import FrameType, TracebackType
 from typing import Any, Callable, NoReturn, Sequence
