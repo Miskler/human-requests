@@ -168,6 +168,45 @@ async def test_method_crash_report_trims_method_from_source_chain_when_limit_is_
 
 
 @pytest.mark.asyncio
+async def test_method_output_error_report_shows_only_source_location(tmp_path: Path) -> None:
+    module_path = tmp_path / "sample_api.py"
+    module_path.write_text(
+        """from human_requests import autotest
+from human_requests.abstraction import Output
+
+class Api:
+    def __init__(self):
+        self.parent = None
+
+    @autotest
+    async def broken(self):
+        return Output(raw="{")
+""",
+        encoding="utf-8",
+    )
+
+    module = _load_module(module_path, "sample_api_invalid_output")
+    api = module.Api()
+
+    with pytest.raises(AutotestMethodCrash) as excinfo:
+        await execute_autotests(api=api, schemashot=_SchemaShotSpy())
+
+    crash = excinfo.value
+    report = _strip_ansi(crash.report)
+    source_lines, start_lineno = inspect.getsourcelines(module.Api.broken)
+    expected_lineno = start_lineno + max(
+        index for index, line in enumerate(source_lines) if line.strip()
+    )
+
+    assert "API method returned invalid JSON" in report
+    assert "API method crashed" not in report
+    assert report.count("Source:") == 1
+    assert "async def broken(self)" not in report
+    assert 'return Output(raw="{")' not in report
+    assert report.split("\n\nSource:\n", 1)[1].splitlines() == [f"sample_api.py:{expected_lineno}"]
+
+
+@pytest.mark.asyncio
 async def test_method_crash_report_uses_custom_truncation_context_lines() -> None:
     def first_helper(value: int) -> int:
         return second_helper(value)

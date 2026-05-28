@@ -34,6 +34,14 @@ def _strip_rich_newline(text: Text) -> Text:
     return text
 
 
+def _render_truncated_notice(line_no_width: int, skipped_lines: int) -> Text:
+    suffix = "line" if skipped_lines == 1 else "lines"
+    notice = Text()
+    notice.append(f"{' ' * line_no_width} │ ")
+    notice.append(f"… skipped {skipped_lines} {suffix} …", style="bold bright_black")
+    return notice
+
+
 def _print_fragment(
     text: str,
     error: JSONDecodeError,
@@ -79,6 +87,9 @@ def _print_fragment(
 
     console.print("[bold]Fragment:[/bold]")
 
+    if start > 0:
+        console.print(_render_truncated_notice(line_no_width, start))
+
     for index in range(start, end):
         line_no = index + 1
         raw_line = lines[index]
@@ -97,11 +108,14 @@ def _print_fragment(
             pointer_col = len(visible_before_error)
 
             pointer = Text()
-            pointer.append(" " * (line_no_width + 3))
+            pointer.append(f"{' ' * line_no_width} │ ")
             pointer.append(" " * pointer_col)
             pointer.append("^ here", style="bold red")
 
             console.print(pointer)
+
+    if end < len(lines):
+        console.print(_render_truncated_notice(line_no_width, len(lines) - end))
 
 
 def _print_json_error(text: str, error: JSONDecodeError) -> None:

@@ -22,6 +22,7 @@ from typing import (
 from .autotest_report import (
     raise_autotest_hook_crash,
     raise_autotest_method_crash,
+    raise_autotest_method_output_error,
     raise_autotest_params_crash,
 )
 
@@ -553,14 +554,10 @@ async def execute_autotest_case(
             response_json_detail_message = _format_autotest_invalid_json_message()
 
         if response_json_error is not None:
-            raise_autotest_hook_crash(
+            raise_autotest_method_output_error(
                 api=api,
-                hook=hook,
+                func=case.func,
                 error=response_json_error,
-                summary_message="Autotest hook preparation crashed",
-                subject_label="Method",
-                subject_value=case.func.__qualname__,
-                source_func=case.func,
                 detail_message=response_json_detail_message,
                 trace_limit=trace_limit,
                 truncation_context_lines=truncation_context_lines,
@@ -607,7 +604,7 @@ async def execute_autotest_case(
             response_json_detail_message = _format_autotest_invalid_json_message()
 
         if response_json_error is not None:
-            raise_autotest_method_crash(
+            raise_autotest_method_output_error(
                 api=api,
                 func=case.func,
                 error=response_json_error,

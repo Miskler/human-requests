@@ -6,6 +6,7 @@ import linecache
 import os
 import sys
 import traceback
+from json import JSONDecodeError
 from dataclasses import dataclass
 from pathlib import Path
 from types import FrameType, TracebackType
@@ -100,6 +101,29 @@ def build_autotest_method_crash_report(
         context_lines=context_lines,
         trace_limit=trace_limit,
         truncation_context_lines=truncation_context_lines,
+    ).report
+
+
+def build_autotest_method_output_error_report(
+    *,
+    api: object,
+    func: AutotestFunction,
+    error: BaseException,
+    context_lines: int = 3,
+    trace_limit: int = 3,
+    truncation_context_lines: int = 3,
+) -> str:
+    return _build_autotest_crash_data(
+        api=api,
+        title=_format_autotest_method_output_error_title(error),
+        subject_label="Method",
+        subject_value=getattr(func, "__qualname__", repr(func)),
+        error=error,
+        context_lines=context_lines,
+        trace_limit=trace_limit,
+        truncation_context_lines=truncation_context_lines,
+        source_func=func,
+        render_source_excerpt=False,
     ).report
 
 
@@ -221,6 +245,33 @@ def raise_autotest_method_crash(
     )
 
 
+def raise_autotest_method_output_error(
+    *,
+    api: object,
+    func: AutotestFunction,
+    error: BaseException,
+    source_func: AutotestFunction | None = None,
+    detail_message: str | None = None,
+    trace_limit: int = 3,
+    truncation_context_lines: int = 3,
+) -> NoReturn:
+    raise AutotestMethodCrash(
+        _build_autotest_crash_data(
+            api=api,
+            title=_format_autotest_method_output_error_title(error),
+            subject_label="Method",
+            subject_value=getattr(func, "__qualname__", repr(func)),
+            error=error,
+            context_lines=truncation_context_lines,
+            source_func=source_func or func,
+            detail_message=detail_message,
+            trace_limit=trace_limit,
+            truncation_context_lines=truncation_context_lines,
+            render_source_excerpt=False,
+        )
+    )
+
+
 def raise_autotest_hook_crash(
     *,
     api: object,
@@ -295,6 +346,7 @@ def _build_autotest_crash_data(
     truncation_context_lines: int,
     source_func: AutotestFunction | None = None,
     detail_message: str | None = None,
+    render_source_excerpt: bool = True,
 ) -> AutotestCrashData:
     code_root = _resolve_code_root(api)
     trace_frames = _traceback_source_locations(error.__traceback__, code_root)
@@ -347,20 +399,24 @@ def _build_autotest_crash_data(
     else:
         source_path = _format_source_path(frame.filename, code_root)
         source_lineno = frame.lineno
-        rendered_frames = [frame]
-        rendered_frames.extend(trace_frames)
-        if trace_limit > 0:
-            rendered_frames = rendered_frames[-trace_limit:]
-        else:
-            rendered_frames = []
-        lines.extend(
-            _render_source_chain(
-                rendered_frames,
-                code_root=code_root,
-                context_lines=context_lines,
-                truncation_context_lines=truncation_context_lines,
+        if render_source_excerpt:
+            rendered_frames = [frame]
+            rendered_frames.extend(trace_frames)
+            if trace_limit > 0:
+                rendered_frames = rendered_frames[-trace_limit:]
+            else:
+                rendered_frames = []
+            lines.extend(
+                _render_source_chain(
+                    rendered_frames,
+                    code_root=code_root,
+                    context_lines=context_lines,
+                    truncation_context_lines=truncation_context_lines,
+                )
             )
-        )
+        else:
+            lines.append("Source:")
+            lines.append(f"{source_path}:{source_lineno}")
 
     return AutotestCrashData(
         summary_message=title,
@@ -567,6 +623,12 @@ def _is_within_root(filename: str, code_root: Path) -> bool:
 def _format_error_message(error: BaseException) -> str:
     message = " ".join(str(error).split())
     return message or "<no message>"
+
+
+def _format_autotest_method_output_error_title(error: BaseException) -> str:
+    if isinstance(error, JSONDecodeError):
+        return "API method returned invalid JSON"
+    return "API method returned invalid output"
 
 
 def _format_source_path(filename: str, code_root: Path | None) -> str:

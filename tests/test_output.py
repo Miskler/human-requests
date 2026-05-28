@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import re
 from json import JSONDecodeError
 from types import SimpleNamespace
 
 import pytest
 
 from human_requests.abstraction import URL, FetchResponse, Output
+from human_requests.abstraction.json_debug import loads_json_debug
+
+
+def _strip_ansi(text: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
 class _FakePlaywrightResponse:
@@ -46,6 +52,39 @@ def test_output_json_prints_rich_debug_on_invalid_json(capsys: pytest.CaptureFix
     captured = capsys.readouterr()
     assert "JSON parse failed" in captured.out
     assert "Fragment:" in captured.out
+
+
+def test_loads_json_debug_truncates_fragment_and_keeps_caret_separator(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    text = "\n".join(
+        [
+            "<!DOCTYPE html>",
+            "<html>",
+            "<head>",
+            '  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">',
+            "</head>",
+            "<body>",
+            '  <div style="text-align: center;">',
+            "    <h1>Forbidden</h1>",
+            "    <p>Denied</p>",
+            "  </div>",
+            "  <section>",
+            "    <span>extra</span>",
+            "  </section>",
+            "</body>",
+        ]
+    )
+
+    with pytest.raises(JSONDecodeError):
+        loads_json_debug(text)
+
+    captured = _strip_ansi(capsys.readouterr().out)
+    assert "JSON parse failed" in captured
+    assert "… skipped 6 lines …" in captured
+    assert re.search(r"^\s*│\s+\^ here$", captured, re.MULTILINE)
+    assert "1 │ <!DOCTYPE html>" in captured
+    assert "2 │ <html>" in captured
 
 
 def test_output_can_wrap_fetch_response_snapshot() -> None:
